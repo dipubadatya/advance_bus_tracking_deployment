@@ -1,0 +1,4060 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BusGo - Live Transit Companion</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
+        /* Custom CSS Variables & Base Styles */
+        :root {
+            --primary: #3b82f6;
+            --primary-dark: #2563eb;
+            --accent: #f97316;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #f8fafc;
+        }
+
+        /* Custom Component Styles */
+        .route-line {
+            position: relative;
+        }
+
+        .route-line::before {
+            content: '';
+            position: absolute;
+            left: 7px;
+            top: 20px;
+            bottom: 20px;
+            width: 2px;
+            background: linear-gradient(to bottom, var(--primary) 0%, #94a3b8 100%);
+        }
+
+        .live-dot {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+            }
+
+            70% {
+                box-shadow: 0 0 0 10px rgba(34, 197, 94, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+            }
+        }
+
+        .bus-avatar {
+            transition: transform 0.3s ease;
+        }
+
+        .bus-card:hover .bus-avatar {
+            transform: translateX(5px);
+        }
+
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+
+        .fab {
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.5);
+        }
+
+        .quick-info-card {
+            transition: all 0.2s ease;
+        }
+
+        .quick-info-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .weather-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            z-index: 10;
+        }
+
+        /* Mobile Specific Styles */
+        @media (max-width: 640px) {
+            .route-card {
+                margin-left: -1rem;
+                margin-right: -1rem;
+                border-radius: 0;
+            }
+
+            .swipe-indicator {
+                position: relative;
+                overflow: hidden;
+            }
+
+            .swipe-indicator::after {
+                content: '';
+                position: absolute;
+                right: 0;
+                top: 0;
+                height: 100%;
+                width: 30px;
+                background: linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.7));
+                pointer-events: none;
+            }
+        }
+    </style>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'sans': ['Inter', 'sans-serif']
+                    },
+                    colors: {
+                        primary: '#074f57',
+                        secondary: '#077187',
+                        third:'#74a57f',
+                        success: '#9ece9a',
+                        danger: '#ef4444',
+                        warning: '#f59e0b',
+                        dark: '#1e293b',
+                        light: '#f8fafc'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+
+<body class="bg-gray-50 pb-16 md:pb-0">
+
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="px-4 sm:px-6 lg:max-w-7xl lg:mx-auto">
+            <div class="flex justify-between items-center h-14 sm:h-16">
+                <div class="flex items-center">
+                    <div class="relative">
+                        <i class="fas fa-bus text-[#1C2541] text-xl sm:text-2xl mr-2 sm:mr-3"></i>
+                        <span class="absolute -top-1 -right-1 flex h-3 w-3">
+                            <span
+                                class="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-3 w-3 bg-orange-500"></span>
+                        </span>
+                    </div>
+                    <h1 class="text-lg sm:text-xl font-semibold text-primary">BusGo</h1>
+                </div>
+                <nav class="flex items-center space-x-4">
+
+                   
+
+
+                    <a href="/dashboard"
+                        class="text-primary hover:text-gray-900 px-2 sm:px-3 py-2 text-sm font-medium">
+                        <span class="hidden sm:inline">Dashboard</span>
+                        <i class="fas fa-th-large sm:hidden"></i>
+                    </a>
+
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto p-4 lg:p-6">
+
+        <section class="relative bg-cover bg-center rounded-xl overflow-hidden mb-8 shadow-lg"
+            style="background-image: url('/6ac780f0649e8e2497148d50edf432c3.gif');">
+            <div class="absolute inset-0 bg-black/60"></div>
+            <div class="relative z-10 flex flex-col items-center justify-center p-8 md:p-16 text-white text-center">
+                <h1 class="text-3xl md:text-5xl font-extrabold tracking-tight">Effortless & Real-Time Bus Tracking</h1>
+                <p class="mt-4 text-lg md:text-xl text-slate-300 max-w-2xl mx-auto">
+                    Find your bus, track its route, and know the exact arrival time. Never miss your ride again.
+                </p>
+                <button id="find-stops-btn"
+                    class="mt-8 bg-primary hover:bg-secondary text-white font-bold py-3 px-8 rounded-full transition-all duration-300 transform hover:scale-105 flex items-center shadow-md">
+                    <i class="fas fa-location-arrow mr-2"></i> Find Nearest Stoppage
+                </button>
+
+                <div
+                    class="mt-8 bg-white/20 backdrop-blur-md rounded-xl p-4 max-w-md w-full text-left border border-white/30">
+                    <div
+                        class="flex flex-col sm:flex-row divide-y sm:divide-y-0 sm:divide-x divide-white/30 space-y-4 sm:space-y-0">
+                        <div class="w-full sm:w-1/2 p-2 sm:pr-4">
+                            <h4 class="text-sm font-semibold text-slate-200 mb-1">
+                                <i class="fas fa-map-pin mr-2 opacity-70"></i>Nearest Stop
+                            </h4>
+                            <p id="nearest-stop-name" class="font-bold text-lg text-white"></p>
+                        </div>
+                        <div class="w-full sm:w-1/2 p-2 sm:pl-4">
+                            <h4 class="text-sm font-semibold text-slate-200 mb-1 pt-4 sm:pt-0">
+                                <i class="fas fa-bus-alt mr-2 opacity-70"></i> Bus
+                            </h4>
+                            <p id="next-bus-info" class="font-bold text-lg text-white"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="bg-secondary rounded-lg p-3 sm:p-4 text-white shadow-lg mb-6">
+            <div class="flex items-start">
+                <i id="weather-icon" class="fas fa-cloud-sun-rain text-yellow-300 text-xl mr-3"></i>
+                <div class="flex-1">
+                    <div class="flex justify-between items-start">
+                        <h3 id="weather-heading" class="font-semibold text-white">Light Rain Expected</h3>
+                        <span class="text-xs bg-primary px-2 py-1 rounded-full">Today</span>
+                    </div>
+                    <p id="weather-subtext" class="text-sm text-blue-100 mt-1">Some buses may be delayed by 5-10 minutes
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- <div class="mb-6">
+            <div class="flex justify-between items-center mb-3">
+                <h2 class="text-base sm:text-lg font-semibold text-gray-900">Your Favorites</h2>
+                <a href="/favorites" class="text-sm text-blue-600 hover:text-blue-800">View All</a>
+            </div>
+            <div class="swipe-indicator overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 pb-2">
+                <div class="flex gap-3 min-w-max sm:min-w-0">
+                    <div
+                        class="bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg p-3 sm:p-4 w-44 text-white relative">
+                        <div class="absolute top-2 right-2"><i class="fas fa-star text-yellow-300"></i></div>
+                        <div class="mb-1 text-sm text-blue-200">Route 42</div>
+                        <div class="font-semibold mb-4">Central Station → West Mall</div>
+                        <div class="flex items-center text-sm mt-auto">
+                            <div class="bg-blue-500 rounded-full p-1 mr-2"><i class="fas fa-clock text-xs"></i></div>
+                            <span class="font-medium">Next: 5 min</span>
+                        </div>
+                    </div>
+
+                    <div
+                        class="bg-gradient-to-br from-indigo-600 to-indigo-700 rounded-lg p-3 sm:p-4 w-44 text-white relative">
+                        <div class="absolute top-2 right-2"><i class="fas fa-star text-yellow-300"></i></div>
+                        <div class="mb-1 text-sm text-indigo-200">Route 15</div>
+                        <div class="font-semibold mb-4">Airport → Downtown</div>
+                        <div class="flex items-center text-sm mt-auto">
+                            <div class="bg-indigo-500 rounded-full p-1 mr-2"><i class="fas fa-clock text-xs"></i></div>
+                            <span class="font-medium">Next: 12 min</span>
+                        </div>
+                    </div>
+
+                    <div
+                        class="bg-gradient-to-br from-purple-600 to-purple-700 rounded-lg p-3 sm:p-4 w-44 text-white relative">
+                        <div class="absolute top-2 right-2"><i class="fas fa-star text-yellow-300"></i></div>
+                        <div class="mb-1 text-sm text-purple-200">Route 08</div>
+                        <div class="font-semibold mb-4">Tech Park → City Zoo</div>
+                        <div class="flex items-center text-sm mt-auto">
+                            <div class="bg-purple-500 rounded-full p-1 mr-2"><i class="fas fa-clock text-xs"></i></div>
+                            <span class="font-medium">Next: 8 min</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div> -->
+
+        <div class="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 mb-4 sm:mb-6">
+            <div class="flex sm:grid sm:grid-cols-4 gap-3 sm:gap-4 min-w-max sm:min-w-0">
+                <div
+                    class="quick-info-card bg-white rounded-lg p-3 sm:p-4 text-center flex-shrink-0 w-32 sm:w-auto shadow-sm hover:shadow">
+                    <div class="text-2xl sm:text-3xl font-bold text-gray-900">
+                        <%=buses.length %>
+                    </div>
+                    <div class="text-xs sm:text-sm text-gray-600">Total Routes</div>
+                </div>
+                <div
+                    class="quick-info-card bg-white rounded-lg p-3 sm:p-4 text-center flex-shrink-0 w-32 sm:w-auto shadow-sm hover:shadow">
+                    <div id="active-buses-count" class="text-2xl sm:text-3xl font-bold text-green-600">
+                        <%= buses.filter(bus=> bus.trackingStarted).length %>
+                    </div>
+                    <div class="text-xs sm:text-sm text-gray-600">Buses Active</div>
+                </div>
+                <div
+                    class="quick-info-card bg-white rounded-lg p-3 sm:p-4 text-center flex-shrink-0 w-32 sm:w-auto shadow-sm hover:shadow">
+                    <div class="text-2xl sm:text-3xl font-bold text-gray-900">5 min</div>
+                    <div class="text-xs sm:text-sm text-gray-600">Avg. Wait</div>
+                </div>
+                <div
+                    class="quick-info-card bg-white rounded-lg p-3 sm:p-4 text-center flex-shrink-0 w-32 sm:w-auto shadow-sm hover:shadow relative">
+                    <div class="weather-badge bg-blue-100 rounded-full p-1"><i
+                            class="fas fa-cloud-rain text-blue-500 text-xs"></i></div>
+                    <div class="text-2xl sm:text-3xl font-bold text-gray-900">98%</div>
+                    <div class="text-xs sm:text-sm text-gray-600">On-Time</div>
+                </div>
+            </div>
+        </div>
+<!-- 
+        <div class="bg-gradient-to-r from-orange-500 to-amber-500 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6 shadow-md">
+            <div class="flex items-start sm:items-center">
+                <div class="bg-white rounded-full p-2 mr-3">
+                    <i class="fas fa-graduation-cap text-orange-600 text-lg"></i>
+                </div>
+                <div class="flex-1">
+                    <h3 class="font-semibold text-white text-sm sm:text-base">RIT College Route Active</h3>
+                    <p class="text-xs sm:text-sm text-orange-100 mt-0.5">Special service Monday-Saturday with extra
+                        buses during peak hours</p>
+                </div>
+                <button
+                    class="px-3 py-1 bg-white text-orange-600 rounded-full text-xs font-medium shadow-sm hover:bg-orange-50">Details</button>
+            </div>
+        </div> -->
+
+   <div class="bg-white rounded-lg  route-card">
+    <div class="px-4 sm:px-6 py-3 sm:py-4 border-b">
+        <h2 class="text-base sm:text-lg font-semibold text-gray-900">Available Routes</h2>
+    </div>
+
+    <% if (buses && buses.length > 0) { %>
+    <div class="divide-y divide-gray-200">
+        <% buses.forEach(bus => { %>
+        <div class="shadow-[-8px_8px_18px_0px_rgba(0,_0,_0,_0.1)] p-4 sm:p-6 hover:bg-gray-50 transition-colors" data-bus-id="<%= bus._id %>">
+
+            <div class="sm:hidden">
+                <div class="flex items-start justify-between mb-3">
+                    <div class="flex items-center flex-1">
+                        <div class="bg-blue-600 text-white font-bold px-2.5 py-1 rounded text-xs mr-2">
+                            <%= bus.busNumber %>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="text-base font-semibold text-gray-900 leading-tight">
+                                <%= bus.routeName %>
+                            </h3>
+                        </div>
+                    </div>
+                    <span class="live-indicator inline-flex items-center <%= bus.trackingStarted ? '' : 'hidden' %>">
+                        <span class="live-dot w-2 h-2 bg-green-500 rounded-full mr-1.5"></span>
+                        <span class="text-xs text-green-600 font-medium">Live</span>
+                    </span>
+                </div>
+
+                <div class="my-4 route-line">
+                    <div class="flex items-center mb-2">
+                        <div class="w-4 h-4 bg-blue-600 rounded-full mr-3"></div>
+                        <span class="text-sm font-medium text-gray-700"> <%= bus.stops[0].name %> </span>
+                    </div>
+                    <div class="flex items-center mb-2 ml-7"><span class="text-xs text-gray-500">TO</span></div>
+                    <div class="flex items-center">
+                        <div class="w-4 h-4 bg-gray-400 rounded-full mr-3"></div>
+                        <span class="text-sm font-medium text-gray-700"> <%= bus.stops[bus.stops.length - 1].name %> </span>
+                    </div>
+                </div>
+
+                <a href="<%= bus.trackingStarted ? `/track/${bus._id}` : '#' %>" class="track-button block w-full text-center px-4 py-2.5 rounded-lg font-medium text-sm transition-colors <%= bus.trackingStarted ? 'bg-primary text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-500 cursor-not-allowed' %>">
+                    <%= bus.trackingStarted ? 'Track Bus' : 'Not Active' %>
+                </a>
+            </div>
+
+            <div class="hidden sm:flex items-start justify-between">
+                <div class="flex-1 pr-6">
+                    <div class="flex items-center mb-3">
+                        <div class="bg-primary text-white font-bold px-3 py-1 rounded text-sm mr-3">
+                            <%= bus.busNumber %>
+                        </div>
+                        <h3 class="text-lg font-semibold text-gray-900">
+                            <%= bus.routeName %>
+                        </h3>
+                        <span class="live-indicator ml-3 inline-flex items-center <%= bus.trackingStarted ? '' : 'hidden' %>">
+                            <span class="live-dot w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                            <span class="text-sm text-green-600 font-medium">Live</span>
+                        </span>
+                    </div>
+                    <div class="mt-4 route-line">
+                        <div class="flex items-center mb-2">
+                            <div class="w-4 h-4 bg-success rounded-full mr-3"></div>
+                            <span class="text-sm font-medium text-gray-700"> <%= bus.stops[0].name %> </span>
+                        </div>
+                        <div class="flex items-center mb-2 ml-7"><span class="text-xs text-gray-500">TO</span></div>
+                        <div class="flex items-center">
+                            <div class="w-4 h-4 bg-gray-400 rounded-full mr-3"></div>
+                            <span class="text-sm font-medium text-gray-700"> <%= bus.stops[bus.stops.length - 1].name %> </span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ml-6 ">
+                    <a href="<%= bus.trackingStarted ? `/track/${bus._id}` : '#' %>" class="track-button px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition-colors <%= bus.trackingStarted ? 'bg-secondary text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-500 cursor-not-allowed' %>">
+                        <%= bus.trackingStarted ? 'Track Bus' : 'Not Active' %>
+                    </a>
+                </div>
+            </div>
+        </div>
+        <% }) %>
+    </div>
+    <% } else { %>
+    <div class="p-12 text-center">
+        <i class="fas fa-bus text-gray-300 text-6xl mb-4"></i>
+        <h3 class="text-lg font-semibold text-gray-900 mb-2">No Routes Available</h3>
+        <p class="text-gray-600">Bus routes will appear here once drivers add them to the system.</p>
+    </div>
+    <% } %>
+</div>
+
+        <div class="mt-6 bg-gray-100 rounded-lg p-6">
+            <h3 class="font-semibold text-gray-900 mb-3">Need Help?</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <a href="#" class="flex items-center text-gray-700 hover:text-blue-600"><i
+                        class="fas fa-map mr-3"></i><span class="text-sm">View Route Maps</span></a>
+                <a href="/bus-list" class="flex items-center text-gray-700 hover:text-blue-600"><i
+                        class="fas fa-calendar-alt mr-3"></i><span class="text-sm">Check Schedules</span></a>
+                <a href="#" class="flex items-center text-gray-700 hover:text-blue-600"><i
+                        class="fas fa-headset mr-3"></i><span class="text-sm">Contact Support</span></a>
+            </div>
+        </div>
+    </main>
+
+    <!-- <div class="fixed bottom-0 left-0 right-0 bg-white border-t md:hidden">
+        <div class="grid grid-cols-5 py-2">
+            <a href="/" class="flex flex-col items-center py-2 text-blue-600">
+                <i class="fas fa-route text-xl mb-1"></i>
+                <span class="text-xs">Routes</span>
+            </a>
+            <a href="#" class="flex flex-col items-center py-2 text-gray-600">
+                <i class="fas fa-map-marked-alt text-xl mb-1"></i>
+                <span class="text-xs">Map</span>
+            </a>
+            <div class="relative flex justify-center">
+                <button
+                    class="fab absolute -top-5 bg-blue-600 w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg">
+                    <i class="fas fa-qrcode text-xl"></i>
+                </button>
+            </div>
+            <a href="#" class="flex flex-col items-center py-2 text-gray-600">
+                <i class="fas fa-star text-xl mb-1"></i>
+                <span class="text-xs">Saved</span>
+            </a>
+            <a href="#" class="flex flex-col items-center py-2 text-gray-600">
+                <div class="relative">
+                    <i class="fas fa-bell text-xl mb-1"></i>
+                    <span
+                        class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">2</span>
+                </div>
+                <span class="text-xs">Alerts</span>
+            </a>
+        </div>
+    </div> -->
+
+<script>
+    const findStopsButton = document.getElementById('find-stops-btn');
+    const nearestStopEl = document.getElementById('nearest-stop-name');
+    const nextBusEl = document.getElementById('next-bus-info');
+
+    // Function to update the UI with API data
+    function updateNearestStopUI(data) {
+        nearestStopEl.textContent = data.stopName;
+        // I've uncommented your more descriptive line for a better UI
+        nextBusEl.textContent = `Bus #${data.busNumber} (${data.distance_km} km away)`;
+    }
+
+    findStopsButton.addEventListener('click', () => {
+        if (!navigator.geolocation) {
+            alert("Sorry, your browser doesn't support geolocation.");
+            return;
+        }
+
+        const originalButtonText = findStopsButton.innerHTML;
+        findStopsButton.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> Searching...`;
+        findStopsButton.disabled = true;
+
+        // Clear previous results
+        nearestStopEl.textContent = '';
+        nextBusEl.textContent = '';
+
+        navigator.geolocation.getCurrentPosition(async (position) => {
+            const { latitude, longitude } = position.coords;
+
+            try {
+                const response = await fetch('/api/nearest-stop', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ latitude, longitude })
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    // This will catch the 404 from your API and use its message
+                    throw new Error(result.message || 'Could not fetch stops.');
+                }
+                
+                updateNearestStopUI(result.nearest_stop);
+
+            } catch (error) {
+                console.error('Error finding stops:', error);
+                
+                // --- THIS IS THE IMPROVEMENT ---
+                // Display the specific error message from the API in the UI.
+                nearestStopEl.textContent = error.message;
+                // Clear the bus info text.
+                nextBusEl.textContent = "---";
+                
+            } finally {
+                findStopsButton.innerHTML = originalButtonText;
+                findStopsButton.disabled = false;
+            }
+
+        }, (error) => {
+            alert("Unable to retrieve your location. Please enable location services.");
+            findStopsButton.innerHTML = originalButtonText;
+            findStopsButton.disabled = false;
+        });
+    });
+</script>
+    <script>
+        // --- CONFIGURATION ---
+        const apiKey = '2f38aa6028df213af7eab8dae586d01f'; // <-- PASTE YOUR API KEY HERE
+        const city = 'Brahmapur';
+        const apiUrl = `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${apiKey}&units=metric`;
+
+        // --- DOM ELEMENTS ---
+        const weatherHeading = document.getElementById('weather-heading');
+        const weatherSubtext = document.getElementById('weather-subtext');
+        const weatherIcon = document.getElementById('weather-icon');
+        const errorMessage = document.getElementById('error-message');
+
+        // --- FETCH AND UPDATE ---
+        async function fetchWeather() {
+            try {
+                const response = await fetch(apiUrl);
+                if (!response.ok) throw new Error('API request failed');
+                const data = await response.json();
+
+
+                updateCardContent(data);
+
+            } catch (error) {
+                console.error('Fetch error:', error);
+                weatherHeading.textContent = "Error";
+                weatherSubtext.textContent = "Could not load data.";
+                weatherIcon.className = "fas fa-exclamation-circle text-red-300 text-xl mr-3 mt-1";
+                errorMessage.classList.remove('hidden');
+            }
+        }
+
+        // --- UPDATE CARD WITH CUSTOM MESSAGES ---
+        function updateCardContent(data) {
+            const condition = data.weather[0].main; // e.g., "Rain", "Clouds", "Clear"
+
+            let headingText = "Weather Update";
+            let subText = "Have a great day!";
+            let iconClass = "fas fa-sun"; // Default icon
+
+
+            switch (condition) {
+                case 'Rain':
+                case 'Drizzle':
+                    headingText = "Rain Expected";
+                    subText = "Grab an umbrella! Buses might be delayed by 5-10 minutes.";
+                    iconClass = "fas fa-cloud-showers-heavy ";
+                    break;
+
+                case 'Clouds':
+                    headingText = "Cloudy Today";
+                    subText = "It's a cloudy one! All buses should be running on schedule.";
+                    iconClass = "fas fa-cloud";
+                    break;
+
+                case 'Clear':
+                    headingText = "Clear Skies";
+                    subText = "Perfect weather for your commute! All buses are on time.";
+                    iconClass = "fas fa-sun";
+                    break;
+
+                case 'Thunderstorm':
+                    headingText = "Thunderstorm Alert";
+                    subText = "Safety first! Expect significant delays. Check for alerts before leaving for the stop.";
+                    iconClass = "fas fa-cloud-bolt";
+                    break;
+
+                case 'Snow': // Unlikely in Brahmapur, but good to have
+                    headingText = "Snow Expected";
+                    subText = "Major delays or route changes are likely. Check for official college announcements.";
+                    iconClass = "fas fa-snowflake";
+                    break;
+
+                case 'Mist':
+                case 'Fog':
+                case 'Haze':
+                    headingText = "Misty Conditions";
+                    subText = "Low visibility this morning. Buses may run slower for safety, expect minor delays.";
+                    iconClass = "fas fa-smog";
+                    break;
+            }
+
+            // Update the HTML content
+            weatherHeading.textContent = headingText;
+            weatherSubtext.textContent = subText;
+            weatherIcon.className = `${iconClass} text-yellow-300 text-xl mr-3 mt-1`;
+        }
+
+        // Run the function when the page loads
+        fetchWeather();
+    </script>
+   <script src="/socket.io/socket.io.js"></script>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const socket = io();
+            const activeBusesCountEl = document.getElementById('active-buses-count');
+
+            socket.on('trackingStatusUpdate', (data) => {
+                const { busId, status } = data;
+                const busCard = document.querySelector(`[data-bus-id="${busId}"]`);
+
+                if (!busCard) {
+                    console.warn(`Bus card with ID ${busId} not found.`);
+                    return;
+                }
+
+                const liveIndicators = busCard.querySelectorAll('.live-indicator');
+                const trackButtons = busCard.querySelectorAll('.track-button');
+                const isTracking = status === 'started';
+
+                // 1. Toggle visibility of "Live" indicators
+                liveIndicators.forEach(indicator => {
+                    indicator.classList.toggle('hidden', !isTracking);
+                });
+
+                // 2. Update the track buttons
+                trackButtons.forEach(button => {
+                    if (isTracking) {
+                        button.href = `/track/${busId}`;
+                        button.textContent = 'Track Bus';
+                        button.classList.remove('bg-gray-200', 'text-gray-500', 'cursor-not-allowed');
+                        button.classList.add('bg-blue-600', 'text-white', 'hover:bg-blue-700');
+                    } else {
+                        button.href = '#';
+                        button.textContent = 'Not Active';
+                        button.classList.remove('bg-blue-600', 'text-white', 'hover:bg-blue-700');
+                        button.classList.add('bg-gray-200', 'text-gray-500', 'cursor-not-allowed');
+                    }
+                });
+                
+                // 3. Recalculate and update the active bus count
+                let activeCount = 0;
+                const allBusCards = document.querySelectorAll('[data-bus-id]');
+                allBusCards.forEach(card => {
+                    const liveIndicator = card.querySelector('.live-indicator');
+                    if (liveIndicator && !liveIndicator.classList.contains('hidden')) {
+                        activeCount++;
+                    }
+                });
+
+                if (activeBusesCountEl) {
+                    activeBusesCountEl.textContent = activeCount;
+                }
+            });
+        });
+    </script>
+      
+</body>
+
+</html>
+
+
+// BUS CARD
+
+<main class="max-w-7xl mx-auto px-4 sm:px-6 mt-6 mb-16">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-xl font-semibold">Available Routes</h2>
+    <span class="text-sm text-slate-500 dark:text-slate-400">
+      Showing <span id="visible-count"><%= buses.length %></span> of <%= buses.length %>
+    </span>
+  </div>
+
+  <% if (buses && buses.length > 0) { %>
+    <div id="routes-grid" class="space-y-4">
+
+      <% buses.forEach(bus => { %>
+        <% const isTracking = bus.trackingStarted; %>
+        <% const startStop = bus.stops[0]?.name || 'N/A'; %>
+        <% const endStop = bus.stops[bus.stops.length - 1]?.name || 'N/A'; %>
+        <% const buttonState = isTracking
+          ? { text: 'Track Bus', icon: 'fa-route', classes: 'bg-brand-600 text-white hover:bg-brand-700' }
+          : { text: 'Not Active', icon: 'fa-ban', classes: 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed' };
+        %>
+        <% const searchIndex = (bus.busNumber + ' ' + bus.routeName + ' ' + startStop + ' ' + endStop).toLowerCase(); %>
+
+        <div class="route-card bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+          data-bus-id="<%= bus._id %>"
+          data-active="<%= isTracking %>"
+          data-search-index="<%= searchIndex %>"
+          
+          data-bus-number="<%= bus.busNumber %>"
+          data-route-name="<%= bus.routeName %>"
+        >
+          <div class="flex items-center gap-4">
+            <span class="flex-shrink-0 inline-flex items-center justify-center w-12 h-12 rounded-lg font-bold bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-200">
+              #<%= bus.busNumber %>
+            </span>
+            <div>
+              <h3 class="font-semibold text-base sm:text-lg"><%= bus.routeName %></h3>
+              <div class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                <%= bus.stops.length %> stops
+              </div>
+            </div>
+          </div>
+
+          <div class="hidden md:flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+            <span class="font-medium"><%= startStop %></span>
+            <i class="fa-solid fa-arrow-right-long text-slate-400"></i>
+            <span class="font-medium"><%= endStop %></span>
+          </div>
+          
+          <div class="flex items-center gap-4 self-end sm:self-center">
+            <% if (isTracking) { %>
+              <div class="live-indicator inline-flex items-center gap-1.5">
+                <span class="live-dot w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                <span class="text-xs font-medium text-emerald-600 dark:text-emerald-400">Live</span>
+              </div>
+            <% } %>
+            <a href="<%= isTracking ? `/track/${bus._id}` : '#' %>" class="track-button inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition <%= buttonState.classes %>">
+              <i class="fa-solid <%= buttonState.icon %>"></i>
+              <span><%= buttonState.text %></span>
+            </a>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  <% } else { %>
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-12 text-center">
+      <i class="fa-solid fa-bus text-slate-300 dark:text-slate-700 text-6xl mb-4"></i>
+      <h3 class="text-lg font-semibold mb-2">No Routes Available</h3>
+      <p class="text-slate-500 dark:text-slate-400">Bus routes will appear here once drivers add them to the system.</p>
+    </div>
+  <% } %>
+</main>
+  <!-- Routes -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 mt-6 mb-16">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg sm:text-xl font-semibold">Available Routes</h2>
+      <span class="text-sm text-slate-500 dark:text-slate-400">Showing <span id="visible-count"><%= buses.length %></span> of <%= buses.length %></span>
+    </div>
+
+    <% if (buses && buses.length > 0) { %>
+      <div id="routes-grid" class="grid md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+        <% buses.forEach(bus => { %>
+          <div
+            class="route-card bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-soft hover:shadow-md transition group"
+            data-bus-id="<%= bus._id %>"
+            data-active="<%= bus.trackingStarted ? 'true' : 'false' %>"
+            data-search-index="<%= (bus.busNumber + ' ' + bus.routeName + ' ' + bus.stops.map(s => s.name).join(' ')).toLowerCase() %>"
+            data-bus-number="<%= bus.busNumber %>"
+            data-route-name="<%= bus.routeName.toLowerCase() %>"
+          >
+            <div class="p-4 sm:p-5">
+              <div class="flex items-start justify-between">
+                <div class="flex items-center gap-3">
+                  <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-sm font-semibold bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-200">
+                    <%= bus.busNumber %>
+                  </span>
+                  <div>
+                    <h3 class="font-semibold text-base sm:text-lg"><%= bus.routeName %></h3>
+                    <div class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      <%= bus.stops.length %> stops
+                    </div>
+                  </div>
+                </div>
+
+                <span class="live-indicator inline-flex items-center gap-1 <%= bus.trackingStarted ? '' : 'hidden' %>">
+                  <span class="live-dot w-2 h-2 bg-emerald-500 rounded-full"></span>
+                  <span class="text-xs font-medium text-emerald-600 dark:text-emerald-400">Live</span>
+                </span>
+              </div>
+
+              <div class="mt-4">
+                <div class="flex items-center gap-3">
+                  <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+                  <div class="text-sm font-medium"><%= bus.stops[0].name %></div>
+                </div>
+                <div class="ml-3 my-1 text-[10px] tracking-wide uppercase text-slate-400">to</div>
+                <div class="flex items-center gap-3">
+                  <div class="w-2 h-2 rounded-full bg-slate-400"></div>
+                  <div class="text-sm font-medium"><%= bus.stops[bus.stops.length - 1].name %></div>
+                </div>
+              </div>
+
+              <div class="mt-5 flex items-center justify-between">
+                <div class="text-xs text-slate-500 dark:text-slate-400">
+                  <i class="fa-solid fa-clock mr-1"></i>
+                  Avg wait: 5 min
+                </div>
+                <a
+                  href="<%= bus.trackingStarted ? `/track/${bus._id}` : '#' %>"
+                  class="track-button inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition
+                  <%= bus.trackingStarted ? 'bg-brand-600 text-white hover:bg-brand-700' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed' %>"
+                >
+                  <i class="fa-solid <%= bus.trackingStarted ? 'fa-route' : 'fa-ban' %>"></i>
+                  <%= bus.trackingStarted ? 'Track Bus' : 'Not Active' %>
+                </a>
+              </div>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+    <% } else { %>
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center">
+        <i class="fa-solid fa-bus text-slate-300 dark:text-slate-700 text-6xl mb-4"></i>
+        <h3 class="text-lg font-semibold mb-2">No Routes Available</h3>
+        <p class="text-slate-500 dark:text-slate-400">Bus routes will appear here once drivers add them to the system.</p>
+      </div>
+    <% } %>
+
+    <!-- Help -->
+    <div class="mt-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5">
+      <h3 class="font-semibold mb-3">Need Help?</h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <a href="#" class="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition">
+          <i class="fa-solid fa-map text-brand-600 dark:text-brand-400"></i>
+          <span>View Route Maps</span>
+        </a>
+        <a href="/bus-list" class="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition">
+          <i class="fa-solid fa-calendar-alt text-brand-600 dark:text-brand-400"></i>
+          <span>Check Schedules</span>
+        </a>
+        <a href="https://roland.ac.in/contactus.php" class="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition">
+          <i class="fa-solid fa-headset text-brand-600 dark:text-brand-400"></i>
+          <span>Contact Support</span>
+        </a>
+      </div>
+    </div>
+  </main>
+
+
+
+  //tracking-tight
+
+  <%
+const formatTime = (time) => {
+    if (!time) return 'N/A';
+    if (time instanceof Date) {
+        return time.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: 'numeric',
+            hour12: true
+        });
+    }
+    const [sHours, minutes] = time.split(':');
+    const hours = parseInt(sHours, 10);
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const twelveHour = hours % 12 || 12;
+    return `${twelveHour}:${minutes} ${ampm}`;
+};
+%>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tracking: <%= bus.busNumber %></title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.fullscreen@2.4.0/Control.FullScreen.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        secondary: '#1e40af',
+                        success: '#10b981',
+                        danger: '#ef4444',
+                        warning: '#f59e0b',
+                        dark: '#1e293b',
+                        light: '#f8fafc'
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+        html,
+        body {
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .stop-connector {
+            position: absolute;
+            left: 15px;
+            top: 40px;
+            width: 3px;
+            height: calc(100% - 20px);
+            background: linear-gradient(to bottom, #e5e7eb, #d1d5db);
+            transition: background 0.3s ease;
+            border-radius: 2px;
+        }
+
+        .stop-dot {
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .stop-item.is-arrived .stop-dot {
+            background-color: #10b981;
+            border-color: #10b981;
+            color: white;
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+        }
+
+        .stop-item.is-arrived .stop-connector {
+            background: linear-gradient(to bottom, #10b981, #10b981);
+        }
+
+        @keyframes glow {
+
+            0%,
+            100% {
+                box-shadow: 0 0 8px 3px rgba(59, 130, 246, 0.4), 0 0 0 3px rgba(59, 130, 246, 0.1);
+            }
+
+            50% {
+                box-shadow: 0 0 16px 6px rgba(59, 130, 246, 0.2), 0 0 0 5px rgba(59, 130, 246, 0.2);
+            }
+        }
+
+        .stop-item.is-next .stop-dot {
+            background-color: #3b82f6;
+            border-color: #3b82f6;
+            color: white;
+            animation: glow 2s infinite;
+        }
+
+        .leaflet-popup-content-wrapper {
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .leaflet-popup-content p {
+            margin: 0;
+        }
+
+        .leaflet-control-zoom,
+        .leaflet-control-fullscreen a {
+            border-radius: 8px !important;
+            border: 1px solid #ccc !important;
+        }
+
+        .bus-icon-rotated {
+            transition: transform 0.5s linear;
+            filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.3));
+        }
+
+        .status-indicator {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .status-indicator::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .status-indicator.bg-green-100::before {
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% {
+                left: -100%;
+            }
+
+            100% {
+                left: 100%;
+            }
+        }
+
+        .info-card {
+            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.9);
+        }
+
+        .stop-info {
+            transition: all 0.3s ease;
+            border-radius: 8px;
+        }
+
+        .stop-info:hover {
+            background-color: #f8fafc;
+            transform: translateX(5px);
+        }
+
+        .eta-badge {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .delay-on-time {
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+
+        .delay-delayed {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+        }
+
+        .delay-early {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+        }
+
+        .scroll-indicator {
+            position: absolute;
+            top: 50%;
+            right: 8px;
+            transform: translateY(-50%);
+            background: rgba(59, 130, 246, 0.1);
+            border-radius: 4px;
+            width: 4px;
+            height: 60px;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 flex flex-col h-screen">
+   <nav class="relative z-20">
+    <!-- Gradient Top Bar Accent -->
+    <div class="h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
+    
+    <!-- Main Navigation -->
+    <div class="bg-white/80 backdrop-blur-md border-b border-gray-100/60 shadow-sm sticky top-0 z-20">
+        <div class="container mx-auto px-4 sm:px-6 py-3">
+            <div class="flex items-center justify-between gap-4">
+                <!-- Back Button - Floating Card Style -->
+                <a href="/" class="group flex items-center bg-white/70 hover:bg-white rounded-2xl px-4 py-2.5 shadow-sm border border-gray-100/80 transition-all duration-300 hover:shadow-md hover:-translate-y-0.5">
+                    <div class="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white mr-2 group-hover:scale-110 transition-transform duration-300">
+                        <i class="fas fa-arrow-left text-xs"></i>
+                    </div>
+                    
+                </a>
+
+                <!-- Center Title - Floating Glassmorphism Card -->
+                <div class="flex-1 max-w-xs mx-auto">
+                    <div class="bg-white/60 backdrop-blur-sm rounded-2xl p-3 shadow-sm border border-gray-100/60 text-center transform hover:scale-105 transition-transform duration-300">
+                        <h1 class="text-base sm:text-lg font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent leading-tight">
+                            Bus <span class="text-indigo-600"><%= bus.busNumber %></span>
+                        </h1>
+                        <p class="text-xs text-gray-500 mt-0.5 font-medium leading-tight"><%= bus.routeName %></p>
+                    </div>
+                </div>
+
+                <!-- Status Indicator - Animated Badge -->
+                <div id="status-indicator" class="relative group">
+                    <div class="absolute inset-0 bg-red-500 rounded-full blur opacity-0 group-hover:opacity-20 transition-opacity duration-300"></div>
+                    <div class="relative bg-red-50/90 backdrop-blur-sm border border-red-100/80 rounded-full px-3 py-2 min-w-[80px] flex items-center justify-center">
+                        <div class="w-2 h-2 bg-red-500 rounded-full mr-2 animate-pulse"></div>
+                        <span class="text-xs font-bold text-red-700 whitespace-nowrap">OFFLINE</span>
+                    </div>
+                    
+                    <!-- Status Tooltip -->
+                    <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none whitespace-nowrap">
+                        Bus is not currently transmitting
+                        <div class="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-800"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Subtle Wave Pattern (Decorative) -->
+    <div class="hidden md:block absolute -bottom-1 left-0 right-0 overflow-hidden pointer-events-none" style="height: 10px;">
+        <svg viewBox="0 0 1200 120" preserveAspectRatio="none" class="w-full h-full">
+            <path d="M0,0V46.29c47.79,22.2,103.59,32.17,158,28,70.36-5.37,136.33-33.31,206.8-37.5C448.73,32.12,513.73,3.05,588,1.1c74.19-.95,148.38,9.29,216.69,28.69,78.76,22.39,152.68,59.79,212.5,97.79l60,48V0H0Z" 
+                  fill="rgba(243, 244, 246, 0.8)" 
+                  class="fill-current text-gray-50"></path>
+        </svg>
+    </div>
+</nav>
+
+    <div class="flex-grow flex flex-col lg:flex-row overflow-hidden">
+        <div id="map-container" class="relative w-full lg:w-2/3 h-1/2 lg:h-full shadow-lg z-10">
+            <div id="map" class="w-full h-full"></div>
+
+            <button id="recenter-btn" title="Center on Bus" class="hidden absolute bottom-20 lg:bottom-4 right-4 z-[1000] bg-white p-3 rounded-full shadow-lg hover:bg-gray-50 transition-all duration-200 active:scale-95 border border-gray-200">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-blue-600">
+                    <path d="M12 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75z" />
+                    <path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zM12.75 6a.75.75 0 00-1.5 0v.093c-2.834.223-5.132 2.521-5.355 5.355H6a.75.75 0 000 1.5h.093c.223 2.834 2.521 5.132 5.355 5.355v.093a.75.75 0 001.5 0v-.093c2.834-.223 5.132-2.521 5.355-5.355h.093a.75.75 0 000-1.5h-.093c-.223-2.834-2.521-5.132-5.355-5.355V6z" clip-rule="evenodd" />
+                </svg>
+            </button>
+        </div>
+
+        <div class="w-full lg:w-1/3 h-1/2 lg:h-full bg-white overflow-y-auto border-t lg:border-t-0 lg:border-l border-gray-200 relative">
+            <div class="scroll-indicator"></div>
+
+            <div class="p-4 sticky top-0 bg-white border-b z-10 shadow-sm">
+                <h2 class="text-xl font-bold text-gray-800 mb-1">Route Stops</h2>
+                <p class="text-sm text-gray-600"><%= bus.stops.length %> stops</p>
+            </div>
+
+            <div id="stop-list" class="relative p-4">
+                <% if (bus.stops.length > 0) { %>
+                    <% bus.stops.forEach((stop, index) => { %>
+                        <div class="stop-item relative pl-12 pb-8" data-stop-index="<%= index %>" data-stop-lat="<%= stop.lat %>" data-stop-lng="<%= stop.lng %>" data-scheduled-time="<%= stop.scheduledTime %>">
+
+                            <% if (index < bus.stops.length - 1) { %>
+                                <div class="stop-connector"></div>
+                            <% } %>
+
+                            <div class="stop-dot absolute left-0 top-0 w-[35px] h-[35px] rounded-full bg-white border-3 border-gray-300 flex items-center justify-center font-bold text-gray-500 text-sm">
+                                <%= index + 1 %>
+                            </div>
+
+                            <div class="ml-2 stop-info p-3 rounded-lg ">
+                                <div class="flex items-center gap-3 mb-2">
+                                    <p class="font-bold text-gray-800 text-lg"><%= stop.name %></p>
+                                    <% if (index === bus.stops.length - 1) { %>
+                                        <span class="text-xs font-bold text-white bg-red-500 px-2 py-1 rounded-full">Final Stop</span>
+                                    <% } %>
+                                    <span class="next-stop-label hidden text-xs font-bold text-white bg-blue-500 px-2 py-1 rounded-full">Next Stop</span>
+                                </div>
+
+                                <div class="space-y-1">
+                                    <p class="text-sm text-gray-600">
+                                        <i class="fas fa-clock mr-2"></i>
+                                        Scheduled: <span class="font-medium"><%= formatTime(stop.scheduledTime) %></span>
+                                    </p>
+
+                                    <p class="arrival-label text-sm text-green-600 font-bold hidden">
+                                        <i class="fas fa-check-circle mr-2"></i>
+                                        Arrived: <span class="arrival-time"></span>
+                                    </p>
+
+                                    <p class="distance-label text-sm text-gray-500 font-medium hidden">
+                                        <i class="fas fa-route mr-2"></i>
+                                        Distance: <span class="distance-value font-bold"></span>
+                                    </p>
+
+                                   <p class="eta-label text-sm text-blue-600 font-bold hidden">
+    <i class="fas fa-hourglass-half mr-2"></i>
+    Expected Arrival: <span class="eta-time"></span>
+    <span class="text-gray-500 font-medium eta-relative"></span>
+</p>
+
+                                    <div class="delay-label text-sm font-semibold hidden">
+                                        <span class="eta-badge delay-status"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    <% }); %>
+                <% } else { %>
+                    <p class="text-gray-500 px-4">No stops have been defined for this route.</p>
+                <% } %>
+            </div>
+        </div>
+    </div>
+
+    <script>const busData = <%- JSON.stringify(bus) %>;</script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.fullscreen@2.4.0/Control.FullScreen.js"></script>
+    <script src="/js/tracker.js"></script>
+</body>
+
+</html>
+<%
+const formatTime = (time) => {
+  if (!time) return 'N/A';
+  if (time instanceof Date) {
+    return time.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: true
+    });
+  }
+  const [sHours, minutes] = time.split(':');
+  const hours = parseInt(sHours, 10);
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const twelveHour = hours % 12 || 12;
+  return `${twelveHour}:${minutes} ${ampm}`;
+};
+const hasStops = bus.stops && bus.stops.length > 0;
+const origin = hasStops ? bus.stops[0] : null;
+const destination = hasStops ? bus.stops[bus.stops.length - 1] : null;
+%>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Tracking: <%= bus.busNumber %></title>
+
+  <!-- Libraries -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.fullscreen@2.4.0/Control.FullScreen.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#2563eb',
+            primaryDark: '#1e40af',
+            success: '#10b981',
+            danger: '#ef4444',
+            warning: '#f59e0b',
+            ink: '#0f172a'
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; }
+    body {
+      background:
+        radial-gradient(1200px 600px at -10% -10%, rgba(59,130,246,0.12), transparent 40%),
+        radial-gradient(900px 500px at 110% -20%, rgba(99,102,241,0.12), transparent 45%),
+        #f8fafc;
+    }
+
+    /* Map / Leaflet touches */
+    .leaflet-popup-content-wrapper { border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,0.18); }
+    .leaflet-control-zoom, .leaflet-control-fullscreen a { border-radius: 10px !important; border: 1px solid #d1d5db !important; }
+    .bus-icon-rotated { transition: transform 0.5s linear; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.35)); }
+
+    /* Status shimmer when ONLINE (toggle bg-green-100 on #status-indicator via your JS) */
+    .status-indicator { position:relative; overflow:hidden; }
+    .status-indicator.bg-green-100::before {
+      content:''; position:absolute; inset:0; left:-100%;
+      background: linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);
+      animation: shimmer 2s infinite;
+    }
+    @keyframes shimmer { 0%{left:-100%} 100%{left:100%} }
+
+    /* Sidebar: Bus details + stops */
+    .glass { backdrop-filter: blur(10px); background: rgba(255,255,255,0.95); border: 1px solid rgba(148,163,184,0.25); }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 700;
+    }
+    .chip-green { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+    .chip-blue  { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+    .chip-red   { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+
+    /* Progress bar (optional for your JS to update) */
+    .progress-wrap { height: 6px; background: #e5e7eb; border-radius: 9999px; overflow: hidden; }
+    .progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg,#2563eb,#1e40af); transition: width .3s ease; }
+
+    /* Timeline visuals */
+    .stop-connector {
+      position: absolute; left: 18px; top: 40px; width: 3px; height: calc(100% - 20px);
+      background: linear-gradient(to bottom, #e5e7eb, #d1d5db); border-radius: 2px; transition: background 0.3s ease;
+    }
+    .stop-dot { transition: all 0.25s ease; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+    .stop-item.is-arrived .stop-dot { background: #10b981; border-color: #10b981; color:#fff; box-shadow: 0 0 0 3px rgba(16,185,129,0.2); }
+    .stop-item.is-arrived .stop-connector { background: linear-gradient(to bottom, #10b981, #10b981); }
+    @keyframes glow {
+      0%,100%{box-shadow:0 0 8px 3px rgba(37,99,235,.32),0 0 0 3px rgba(37,99,235,.16)}
+      50%{box-shadow:0 0 16px 6px rgba(37,99,235,.2),0 0 0 6px rgba(37,99,235,.16)}
+    }
+    .stop-item.is-next .stop-dot { background:#2563eb; border-color:#2563eb; color:#fff; animation: glow 2s infinite; }
+    .stop-info { transition: all 0.25s ease; border-radius: 14px; }
+    .stop-info:hover { background:#f8fafc; transform: translateX(4px); }
+
+    /* Make summary (collapsible bus details on small screens) look nice */
+    details summary::-webkit-details-marker { display: none; }
+    details summary { list-style: none; cursor: pointer; }
+    details[open] .summary-icon { transform: rotate(180deg); }
+    .summary-icon { transition: transform .25s ease; }
+  </style>
+</head>
+
+<body class="text-slate-800 flex flex-col h-screen">
+  <!-- Minimal Navbar (no bus details here) -->
+  <nav class="relative z-30">
+    <div class="h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-sky-500"></div>
+    <div class="bg-white/85 backdrop-blur-md border-b border-gray-100/70 shadow-sm sticky top-0 z-30">
+      <div class="container mx-auto px-4 sm:px-6 py-3">
+        <div class="flex items-center justify-between gap-4">
+          <a href="/" class="group flex items-center bg-white/70 hover:bg-white rounded-2xl px-4 py-2.5 shadow-sm border border-gray-100/80 transition-all duration-300 hover:shadow-md hover:-translate-y-0.5">
+            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white mr-2 group-hover:scale-110 transition-transform duration-300">
+              <i class="fas fa-arrow-left text-xs"></i>
+            </div>
+          </a>
+          <div class="flex-1"></div>
+          <div id="status-indicator" class="status-indicator">
+            <div class="relative bg-red-50/90 backdrop-blur-sm border border-red-100/80 rounded-full px-3 py-2 min-w-[96px] flex items-center justify-center">
+              <div class="w-2 h-2 bg-red-500 rounded-full mr-2 animate-pulse"></div>
+              <span class="text-xs font-bold text-red-700 whitespace-nowrap">OFFLINE</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Layout -->
+  <div class="flex-grow flex flex-col lg:flex-row overflow-hidden">
+    <!-- Map -->
+    <div id="map-container" class="relative w-full lg:w-2/3 h-[56svh] lg:h-full shadow-sm">
+      <div id="map" class="w-full h-full"></div>
+      <button id="recenter-btn" title="Center on Bus" class="hidden absolute bottom-4 right-4 z-[1000] bg-white p-3 rounded-full shadow-lg hover:bg-gray-50 transition-all duration-200 active:scale-95 border border-gray-200">
+        <i class="fa-solid fa-crosshairs text-primary text-lg"></i>
+      </button>
+    </div>
+
+    <!-- Sidebar: Bus details + Timeline (fully responsive) -->
+    <aside class="w-full lg:w-1/3 h-[44svh] lg:h-full bg-white border-t lg:border-t-0 lg:border-l border-gray-200 flex flex-col">
+      <!-- Bus Details (sticky header area) -->
+      <div class="px-4 pt-3 pb-2 bg-white sticky top-0 z-10 border-b">
+        <!-- Collapsible on mobile to save space -->
+        <details open class="group">
+          <summary class="flex items-center justify-between py-1">
+            <div class="flex items-center gap-2">
+              <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow">
+                <i class="fa-solid fa-bus"></i>
+              </div>
+              <div>
+                <div class="text-base sm:text-lg font-extrabold leading-tight">Bus <%= bus.busNumber %></div>
+                <div class="text-[11px] sm:text-xs text-slate-500 font-medium"><%= bus.routeName %></div>
+              </div>
+            </div>
+            <i class="fa-solid fa-chevron-down text-slate-500 summary-icon"></i>
+          </summary>
+
+          <div class="mt-2 glass rounded-xl p-3">
+            <% if (hasStops) { %>
+              <div class="text-sm text-slate-700">
+                <span class="font-semibold"><%= origin.name %></span>
+                <span class="mx-1.5 opacity-70">→</span>
+                <span class="font-semibold"><%= destination.name %></span>
+              </div>
+              <div class="mt-1 text-xs text-slate-500 flex flex-wrap items-center gap-3">
+                <span><i class="fa-regular fa-clock mr-1"></i><%= formatTime(origin.scheduledTime) %> • <%= formatTime(destination.scheduledTime) %></span>
+                <span><i class="fa-solid fa-location-dot mr-1"></i><%= bus.stops.length %> stops</span>
+              </div>
+
+              <!-- Optional route progress (your JS can update width of .progress-fill) -->
+              <div id="route-progress" class="mt-3">
+                <div class="progress-wrap">
+                  <div class="progress-fill" style="width: 0%;"></div>
+                </div>
+                <div class="mt-1.5 flex items-center justify-between text-[11px] text-slate-500">
+                  <span>Start</span><span>In Progress</span><span>End</span>
+                </div>
+              </div>
+            <% } else { %>
+              <div class="text-sm text-slate-600">No stops configured for this route.</div>
+            <% } %>
+
+            <!-- Legend -->
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              <span class="chip chip-green"><span class="w-2 h-2 rounded-full bg-success inline-block"></span> Arrived</span>
+              <span class="chip chip-blue"><span class="w-2 h-2 rounded-full bg-primary inline-block"></span> Next</span>
+              <span class="chip chip-red"><i class="fa-solid fa-clock-rotate-left"></i> Delayed</span>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Stop list -->
+      <div id="stop-list" class="relative p-4 overflow-y-auto flex-1">
+        <% if (bus.stops.length > 0) { %>
+          <% bus.stops.forEach((stop, index) => { %>
+            <div class="stop-item relative pl-14 pb-8" data-stop-index="<%= index %>" data-stop-lat="<%= stop.lat %>" data-stop-lng="<%= stop.lng %>" data-scheduled-time="<%= stop.scheduledTime %>">
+              <% if (index < bus.stops.length - 1) { %>
+                <div class="stop-connector"></div>
+              <% } %>
+
+              <div class="stop-dot absolute left-0 top-0 w-[40px] h-[40px] rounded-full bg-white border-2 border-gray-300 flex items-center justify-center font-bold text-gray-600 text-sm">
+                <%= index + 1 %>
+              </div>
+
+              <div class="ml-2 stop-info p-3 rounded-xl border border-gray-100 bg-white/70">
+                <div class="flex flex-wrap items-center gap-2 mb-2">
+                  <p class="font-bold text-slate-800 text-base sm:text-lg"><%= stop.name %></p>
+                  <% if (index === bus.stops.length - 1) { %>
+                    <span class="text-[10px] font-bold text-white bg-red-500 px-2 py-1 rounded-full">Final Stop</span>
+                  <% } %>
+                  <span class="next-stop-label hidden text-[10px] font-bold text-white bg-primary px-2 py-1 rounded-full">Next Stop</span>
+                </div>
+
+                <div class="space-y-1">
+                  <p class="text-sm text-slate-600">
+                    <i class="fas fa-clock mr-2 text-slate-400"></i>
+                    Scheduled: <span class="font-medium"><%= formatTime(stop.scheduledTime) %></span>
+                  </p>
+
+                  <p class="arrival-label text-sm text-green-600 font-bold hidden">
+                    <i class="fas fa-check-circle mr-2"></i>
+                    Arrived: <span class="arrival-time"></span>
+                  </p>
+
+                  <p class="distance-label text-sm text-slate-500 font-medium hidden">
+                    <i class="fas fa-route mr-2"></i>
+                    Distance: <span class="distance-value font-bold"></span>
+                  </p>
+
+                  <p class="eta-label text-sm text-blue-600 font-bold hidden">
+                    <i class="fas fa-hourglass-half mr-2"></i>
+                    Expected Arrival: <span class="eta-time"></span>
+                    <span class="text-slate-500 font-medium eta-relative"></span>
+                  </p>
+
+                  <div class="delay-label text-sm font-semibold hidden">
+                    <span class="eta-badge delay-status"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          <% }); %>
+        <% } else { %>
+          <p class="text-slate-500">No stops have been defined for this route.</p>
+        <% } %>
+      </div>
+    </aside>
+  </div>
+
+  <script>const busData = <%- JSON.stringify(bus) %>;</script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.fullscreen@2.4.0/Control.FullScreen.js"></script>
+  <script src="/js/tracker.js"></script>
+</body>
+</html>
+
+<%
+const formatTime = (time) => {
+  if (!time) return 'N/A';
+  if (time instanceof Date) {
+    return time.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: true
+    });
+  }
+  const [sHours, minutes] = time.split(':');
+  const hours = parseInt(sHours, 10);
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const twelveHour = hours % 12 || 12;
+  return `${twelveHour}:${minutes} ${ampm}`;
+};
+const hasStops = bus.stops && bus.stops.length > 0;
+const origin = hasStops ? bus.stops[0] : null;
+const destination = hasStops ? bus.stops[bus.stops.length - 1] : null;
+%>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Tracking: <%= bus.busNumber %></title>
+
+  <!-- Libraries -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.fullscreen@2.4.0/Control.FullScreen.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#2563eb',
+            primaryDark: '#1e40af',
+            success: '#10b981',
+            danger: '#ef4444',
+            warning: '#f59e0b',
+            ink: '#0f172a'
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    html, body { height: 100%; overflow: hidden; font-family: 'Inter', sans-serif; }
+    body {
+      background:
+        radial-gradient(1200px 600px at -10% -10%, rgba(59,130,246,0.12), transparent 40%),
+        radial-gradient(900px 500px at 110% -20%, rgba(99,102,241,0.12), transparent 45%),
+        #f8fafc;
+    }
+
+    /* Map / Leaflet touches */
+    .leaflet-popup-content-wrapper { border-radius: 12px; box-shadow: 0 6px 24px rgba(0,0,0,0.18); }
+    .leaflet-control-zoom, .leaflet-control-fullscreen a { border-radius: 10px !important; border: 1px solid #d1d5db !important; }
+    .bus-icon-rotated { transition: transform 0.5s linear; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.35)); }
+
+    /* Hide default Leaflet controls (we use custom toolbars) */
+    .leaflet-control-container { display: none; }
+
+    /* Status shimmer when ONLINE */
+    .status-indicator { position:relative; overflow:hidden; }
+    .status-indicator.bg-green-100::before {
+      content:''; position:absolute; inset:0; left:-100%;
+      background: linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);
+      animation: shimmer 2s infinite;
+    }
+    @keyframes shimmer { 0%{left:-100%} 100%{left:100%} }
+
+    /* Sidebar: Bus details + stops */
+    .glass { backdrop-filter: blur(10px); background: rgba(255,255,255,0.95); border: 1px solid rgba(148,163,184,0.25); }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 700;
+    }
+    .chip-green { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+    .chip-blue  { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+    .chip-red   { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+
+    /* Progress bar */
+    .progress-wrap { height: 6px; background: #e5e7eb; border-radius: 9999px; overflow: hidden; }
+    .progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg,#2563eb,#1e40af); transition: width .3s ease; }
+
+    /* Timeline visuals */
+    .stop-connector {
+      position: absolute; left: 18px; top: 40px; width: 3px; height: calc(100% - 20px);
+      background: linear-gradient(to bottom, #e5e7eb, #d1d5db); border-radius: 2px; transition: background 0.3s ease;
+    }
+    .stop-dot { transition: all 0.25s ease; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+    .stop-item.is-arrived .stop-dot { background: #10b981; border-color: #10b981; color:#fff; box-shadow: 0 0 0 3px rgba(16,185,129,0.2); }
+    .stop-item.is-arrived .stop-connector { background: linear-gradient(to bottom, #10b981, #10b981); }
+    @keyframes glow {
+      0%,100%{box-shadow:0 0 8px 3px rgba(37,99,235,.32),0 0 0 3px rgba(37,99,235,.16)}
+      50%{box-shadow:0 0 16px 6px rgba(37,99,235,.2),0 0 0 6px rgba(37,99,235,.16)}
+    }
+    .stop-item.is-next .stop-dot { background:#2563eb; border-color:#2563eb; color:#fff; animation: glow 2s infinite; }
+    .stop-info { transition: all 0.25s ease; border-radius: 14px; }
+    .stop-info:hover { background:#f8fafc; transform: translateX(4px); }
+
+    /* Make summary (collapsible bus details on small screens) look nice */
+    details summary::-webkit-details-marker { display: none; }
+    details summary { list-style: none; cursor: pointer; }
+    details[open] .summary-icon { transform: rotate(180deg); }
+    .summary-icon { transition: transform .25s ease; }
+
+    /* Toolbar button states */
+    .btn { transition: all .2s ease; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+  </style>
+</head>
+
+<body class="text-slate-800 flex flex-col h-screen">
+  <!-- Navbar -->
+  <nav class="relative z-30">
+    <div class="h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-sky-500"></div>
+    <div class="bg-white/85 backdrop-blur-md border-b border-gray-100/70 shadow-sm sticky top-0 z-30">
+      <div class="container mx-auto px-4 sm:px-6 py-3">
+        <div class="flex items-center justify-between gap-4">
+          <a href="/" class="group flex items-center bg-white/70 hover:bg-white rounded-2xl px-4 py-2.5 shadow-sm border border-gray-100/80 transition-all duration-300 hover:shadow-md hover:-translate-y-0.5">
+            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white mr-2 group-hover:scale-110 transition-transform duration-300">
+              <i class="fas fa-arrow-left text-xs"></i>
+            </div>
+          </a>
+
+          <div class="flex-1"></div>
+
+          <!-- Status Indicator -->
+          <div id="status-indicator" class="status-indicator">
+            <div id="status-chip" class="relative bg-red-50/90 backdrop-blur-sm border border-red-100/80 rounded-full px-3 py-2 min-w-[112px] flex items-center justify-center">
+              <div id="status-dot" class="w-2 h-2 bg-red-500 rounded-full mr-2 animate-pulse"></div>
+              <span id="status-text" class="text-xs font-bold text-red-700 whitespace-nowrap">OFFLINE</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Layout -->
+  <div class="flex-grow flex flex-col lg:flex-row overflow-hidden">
+    <!-- Map + Mobile toolbar -->
+    <div id="map-container" class="relative w-full lg:w-2/3 h-[56svh] lg:h-full shadow-sm flex flex-col">
+      <!-- Mobile toolbar (above the map) -->
+      <div id="map-toolbar-mobile" class="lg:hidden bg-white/85 backdrop-blur-sm border-b border-gray-200 px-3 py-2 flex items-center justify-between gap-2">
+        <div class="inline-flex rounded-xl border border-gray-200 overflow-hidden">
+          <button type="button" class="btn px-3 py-1.5 text-xs font-bold bg-primary text-white" data-action="base-street" title="Street basemap">Street</button>
+          <button type="button" class="btn px-3 py-1.5 text-xs font-bold bg-white text-slate-700" data-action="base-satellite" title="Satellite basemap">Satellite</button>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button type="button" class="btn px-2.5 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50" data-action="zoom-out" title="Zoom out">
+            <i class="fa-solid fa-minus text-slate-700"></i>
+          </button>
+          <button type="button" class="btn px-2.5 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50" data-action="zoom-in" title="Zoom in">
+            <i class="fa-solid fa-plus text-slate-700"></i>
+          </button>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button type="button" class="btn px-3 py-1.5 text-xs font-bold bg-primary text-white rounded-lg" data-action="follow" aria-pressed="true" title="Follow bus">Follow</button>
+          <button type="button" class="btn px-2.5 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50" data-action="recenter" title="Recenter on bus">
+            <i class="fa-solid fa-crosshairs text-slate-700"></i>
+          </button>
+          <button type="button" class="btn px-2.5 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50" data-action="toggle-fullscreen" title="Fullscreen">
+            <i class="fa-solid fa-expand text-slate-700"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Map -->
+      <div id="map" class="w-full flex-1"></div>
+    </div>
+
+    <!-- Sidebar: Bus details + Timeline -->
+    <aside class="w-full lg:w-1/3 h-[44svh] lg:h-full bg-white border-t lg:border-t-0 lg:border-l border-gray-200 flex flex-col">
+      <!-- Bus Details (sticky header area) -->
+      <div class="px-4 pt-3 pb-2 bg-white sticky top-0 z-10 border-b">
+        <!-- Collapsible on mobile -->
+        <details open class="group">
+          <summary class="flex items-center justify-between py-1">
+            <div class="flex items-center gap-2">
+              <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow">
+                <i class="fa-solid fa-bus"></i>
+              </div>
+              <div>
+                <div class="text-base sm:text-lg font-extrabold leading-tight">Bus <%= bus.busNumber %></div>
+                <div class="text-[11px] sm:text-xs text-slate-500 font-medium"><%= bus.routeName %></div>
+              </div>
+            </div>
+            <i class="fa-solid fa-chevron-down text-slate-500 summary-icon"></i>
+          </summary>
+
+          <div class="mt-2 glass rounded-xl p-3">
+            <% if (hasStops) { %>
+              <div class="text-sm text-slate-700">
+                <span class="font-semibold"><%= origin.name %></span>
+                <span class="mx-1.5 opacity-70">→</span>
+                <span class="font-semibold"><%= destination.name %></span>
+              </div>
+              <div class="mt-1 text-xs text-slate-500 flex flex-wrap items-center gap-3">
+                <span><i class="fa-regular fa-clock mr-1"></i><%= formatTime(origin.scheduledTime) %> • <%= formatTime(destination.scheduledTime) %></span>
+                <span><i class="fa-solid fa-location-dot mr-1"></i><%= bus.stops.length %> stops</span>
+              </div>
+
+              <!-- Optional route progress -->
+              <div id="route-progress" class="mt-3">
+                <div class="progress-wrap">
+                  <div class="progress-fill" style="width: 0%;"></div>
+                </div>
+                <div class="mt-1.5 flex items-center justify-between text-[11px] text-slate-500">
+                  <span>Start</span><span>In Progress</span><span>End</span>
+                </div>
+              </div>
+            <% } else { %>
+              <div class="text-sm text-slate-600">No stops configured for this route.</div>
+            <% } %>
+
+            <!-- Legend -->
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              <span class="chip chip-green"><span class="w-2 h-2 rounded-full bg-success inline-block"></span> Arrived</span>
+              <span class="chip chip-blue"><span class="w-2 h-2 rounded-full bg-primary inline-block"></span> Next</span>
+              <span class="chip chip-red"><i class="fa-solid fa-clock-rotate-left"></i> Delayed</span>
+            </div>
+          </div>
+        </details>
+
+        <!-- Desktop toolbar (inside sidebar header) -->
+        <div id="map-toolbar-desktop" class="hidden lg:flex items-center justify-between gap-2 mt-3 glass rounded-xl p-2">
+          <div class="inline-flex rounded-xl border border-gray-200 overflow-hidden">
+            <button type="button" class="btn px-3 py-1.5 text-xs font-bold bg-primary text-white" data-action="base-street" title="Street basemap">Street</button>
+            <button type="button" class="btn px-3 py-1.5 text-xs font-bold bg-white text-slate-700" data-action="base-satellite" title="Satellite basemap">Satellite</button>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button type="button" class="btn px-2.5 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50" data-action="zoom-out" title="Zoom out">
+              <i class="fa-solid fa-minus text-slate-700"></i>
+            </button>
+            <button type="button" class="btn px-2.5 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50" data-action="zoom-in" title="Zoom in">
+              <i class="fa-solid fa-plus text-slate-700"></i>
+            </button>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button type="button" class="btn px-3 py-1.5 text-xs font-bold bg-primary text-white rounded-lg" data-action="follow" aria-pressed="true" title="Follow bus">Follow</button>
+            <button type="button" class="btn px-2.5 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50" data-action="recenter" title="Recenter on bus">
+              <i class="fa-solid fa-crosshairs text-slate-700"></i>
+            </button>
+            <button type="button" class="btn px-2.5 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50" data-action="toggle-fullscreen" title="Fullscreen">
+              <i class="fa-solid fa-expand text-slate-700"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stop list -->
+      <div id="stop-list" class="relative p-4 overflow-y-auto flex-1">
+        <% if (bus.stops.length > 0) { %>
+          <% bus.stops.forEach((stop, index) => { %>
+            <div class="stop-item relative pl-14 pb-8" data-stop-index="<%= index %>" data-stop-lat="<%= stop.lat %>" data-stop-lng="<%= stop.lng %>" data-scheduled-time="<%= stop.scheduledTime %>">
+              <% if (index < bus.stops.length - 1) { %>
+                <div class="stop-connector"></div>
+              <% } %>
+
+              <div class="stop-dot absolute left-0 top-0 w-[40px] h-[40px] rounded-full bg-white border-2 border-gray-300 flex items-center justify-center font-bold text-gray-600 text-sm">
+                <%= index + 1 %>
+              </div>
+
+              <div class="ml-2 stop-info p-3 rounded-xl border border-gray-100 bg-white/70">
+                <div class="flex flex-wrap items-center gap-2 mb-2">
+                  <p class="font-bold text-slate-800 text-base sm:text-lg"><%= stop.name %></p>
+                  <% if (index === bus.stops.length - 1) { %>
+                    <span class="text-[10px] font-bold text-white bg-red-500 px-2 py-1 rounded-full">Final Stop</span>
+                  <% } %>
+                  <span class="next-stop-label hidden text-[10px] font-bold text-white bg-primary px-2 py-1 rounded-full">Next Stop</span>
+                </div>
+
+                <div class="space-y-1">
+                  <p class="text-sm text-slate-600">
+                    <i class="fas fa-clock mr-2 text-slate-400"></i>
+                    Scheduled: <span class="font-medium"><%= formatTime(stop.scheduledTime) %></span>
+                  </p>
+
+                  <p class="arrival-label text-sm text-green-600 font-bold hidden">
+                    <i class="fas fa-check-circle mr-2"></i>
+                    Arrived: <span class="arrival-time"></span>
+                  </p>
+
+                  <p class="distance-label text-sm text-slate-500 font-medium hidden">
+                    <i class="fas fa-route mr-2"></i>
+                    Distance: <span class="distance-value font-bold"></span>
+                  </p>
+
+                  <p class="eta-label text-sm text-blue-600 font-bold hidden">
+                    <i class="fas fa-hourglass-half mr-2"></i>
+                    Expected Arrival: <span class="eta-time"></span>
+                    <span class="text-slate-500 font-medium eta-relative"></span>
+                  </p>
+
+                  <div class="delay-label text-sm font-semibold hidden">
+                    <span class="eta-badge delay-status"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          <% }); %>
+        <% } else { %>
+          <p class="text-slate-500">No stops have been defined for this route.</p>
+        <% } %>
+      </div>
+    </aside>
+  </div>
+
+  <script>const busData = <%- JSON.stringify(bus) %>;</script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.fullscreen@2.4.0/Control.FullScreen.js"></script>
+
+  <script>
+  document.addEventListener('DOMContentLoaded', () => {
+    if (typeof busData === 'undefined') return;
+
+    // --- CONFIGURATION ---
+    const AVERAGE_BUS_SPEED_KMPH = 35;
+    const ARRIVAL_THRESHOLD_METERS = 75;
+    const ROLLING_AVERAGE_SAMPLES = 5;
+
+    // --- DOM ELEMENTS ---
+    const statusIndicator = document.getElementById('status-indicator');
+    const statusChip = document.getElementById('status-chip');
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const stopElements = document.querySelectorAll('.stop-item');
+    const routeProgressFill = document.querySelector('.progress-fill');
+
+    // --- STATE MANAGEMENT ---
+    const tripState = {
+      busId: busData._id,
+      arrivalTimes: new Map(),
+      lastLocation: null,
+      recentSpeeds: [],
+      isCentering: true,
+      lastArrivedStopIndex: -1,
+      fullRouteCoords: null,
+      currentNextStopIndex: null
+    };
+    let trackingLive = !!busData.trackingStarted;
+
+    // --- MAP INITIALIZATION ---
+    const initialLat = busData.currentLocation?.lat || busData.stops[0]?.lat || 19.3149;
+    const initialLng = busData.currentLocation?.lng || busData.stops[0]?.lng || 84.7941;
+
+    const map = L.map('map', { fullscreenControl: false, zoomControl: false }).setView([initialLat, initialLng], 14);
+
+    // --- TILE LAYERS ---
+    const streetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    });
+    const satelliteMap = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Tiles &copy; Esri'
+    });
+    streetMap.addTo(map);
+
+    // --- ICONS & MAP LAYERS ---
+    const busIcon = L.divIcon({
+      html: '<img src="/bus-school.png" class="bus-icon-rotated" style="width:40px; height:40px;">',
+      className: '',
+      iconSize: [40, 40],
+      iconAnchor: [20, 20]
+    });
+    const stopIcon = L.icon({ iconUrl: '/destination.png', iconSize: [25, 25], iconAnchor: [12, 25] });
+    let busMarker = null;
+    let routePolyline = null;
+    let progressPolyline = null;
+    let animationFrameId = null;
+
+    // --- ROUTE DRAWING LOGIC ---
+async function initializeRoute() {
+  // Early return if there aren't enough stops
+  if (!busData.stops || busData.stops.length < 2) return;
+
+  // Add stop markers on the map
+  busData.stops.forEach((stop) => {
+    L.marker([stop.lat, stop.lng], { icon: stopIcon })
+      .addTo(map)
+      .bindPopup(`<p class="font-bold">${stop.name}</p>`);
+  });
+
+  // Create the coordinates string for the OSRM API request
+  const coordsString = busData.stops
+    .map(stop => `${stop.lng},${stop.lat}`)
+    .join(';');
+  
+  const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`;
+
+  try {
+    // Fetch the route data from OSRM
+    const response = await fetch(osrmUrl);
+    
+    if (!response.ok) {
+      throw new Error('OSRM request failed');
+    }
+    
+    const routeData = await response.json();
+    
+    // If a route is found, draw the route on the map
+    if (routeData.routes && routeData.routes.length > 0) {
+      const detailedCoords = routeData.routes[0].geometry.coordinates.map(p => [p[1], p[0]]);
+      tripState.fullRouteCoords = detailedCoords;
+      
+      routePolyline = L.polyline(detailedCoords, {
+        color: '#1646ccff',
+        weight: 6,
+        opacity: 0.6,
+        dashArray: '9, 9'
+      }).addTo(map);
+
+      progressPolyline = L.polyline([], {
+        color: '#5d7580ff',
+        weight: 7
+      }).addTo(map);
+
+      // Fit the map bounds to the new route
+      map.fitBounds(routePolyline.getBounds(), { padding: [50, 50] });
+    } else {
+      throw new Error('No route found by OSRM');
+    }
+  } catch (error) {
+    // Fallback to straight lines if OSRM request fails
+    console.error("Could not fetch route from OSRM, falling back to straight lines:", error);
+    
+    const stopCoordinates = busData.stops.map(stop => [stop.lat, stop.lng]);
+    tripState.fullRouteCoords = stopCoordinates;
+
+    routePolyline = L.polyline(stopCoordinates, {
+      color: '#888',
+      weight: 6,
+      opacity: 0.6,
+      dashArray: '10, 10'
+    }).addTo(map);
+
+    progressPolyline = L.polyline([], {
+      color: '#0ea5e9',
+      weight: 7
+    }).addTo(map);
+
+    // Fit the map bounds to the new route
+    map.fitBounds(routePolyline.getBounds(), { padding: [50, 50] });
+  }
+
+  // Update the toolbar UI after route is set
+  updateToolbarUI();
+}
+
+// Initialize the route on page load
+initializeRoute();
+
+
+    // --- UTILITY FUNCTIONS ---
+function formatRelativeTime(minutes) {
+  const abs = Math.max(1, Math.round(Math.abs(minutes))); // Ensure the value is at least 1
+  if (abs < 60) {
+    return `${abs} min${abs === 1 ? '' : 's'}`; // Singular/plural 'min'
+  }
+  
+  const hours = Math.floor(abs / 60);
+  const rem = abs % 60;
+  if (hours < 24) {
+    return rem ? `${hours} hr ${rem} min` : `${hours} hr`; // Display hours and minutes if remaining minutes exist
+  }
+  
+  const days = Math.floor(hours / 24);
+  return days === 1 ? '1 day' : `${days} days`; // Return '1 day' for one day, or plural for more than one
+}
+
+
+    function calculateBearing(start, end) {
+      const toRad = (deg) => deg * Math.PI / 180;
+      const toDeg = (rad) => rad * 180 / Math.PI;
+      const lat1 = toRad(start.lat), lng1 = toRad(start.lng);
+      const lat2 = toRad(end.lat), lng2 = toRad(end.lng);
+      const y = Math.sin(lng2 - lng1) * Math.cos(lat2);
+      const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(lng2 - lng1);
+      return (toDeg(Math.atan2(y, x)) + 360) % 360;
+    }
+
+    function parseTimeToDate(timeString) {
+      if (!timeString || !timeString.includes(':')) return null;
+      const today = new Date();
+      const [hours, minutes] = timeString.split(':').map(Number);
+      today.setHours(hours, minutes, 0, 0);
+      return today;
+    }
+
+    function findClosestPointOnPolyline(busLatLng, polylineCoords) {
+      let closestPoint = null, minDistance = Infinity, closestSegmentIndex = -1;
+      for (let i = 0; i < polylineCoords.length - 1; i++) {
+        const p1 = L.latLng(polylineCoords[i]), p2 = L.latLng(polylineCoords[i + 1]);
+        const projected = L.LineUtil.closestPointOnSegment(busLatLng, p1, p2);
+        const distance = busLatLng.distanceTo(projected);
+        if (distance < minDistance) {
+          minDistance = distance;
+          closestPoint = projected;
+          closestSegmentIndex = i;
+        }
+      }
+      return { point: closestPoint, index: closestSegmentIndex };
+    }
+
+    function polylineLength(coords) {
+      let total = 0;
+      for (let i = 0; i < coords.length - 1; i++) {
+        total += L.latLng(coords[i]).distanceTo(L.latLng(coords[i + 1]));
+      }
+      return total;
+    }
+
+    // --- CUSTOM TOOLBAR STATE + WIRING ---
+    let currentBase = 'street';
+
+    function setSegmentActive(btn, active) {
+      btn.classList.toggle('bg-primary', active);
+      btn.classList.toggle('text-white', active);
+      btn.classList.toggle('bg-white', !active);
+      btn.classList.toggle('text-slate-700', !active);
+    }
+
+    function setPressed(btn, pressed) {
+      btn.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+      btn.classList.toggle('bg-primary', pressed);
+      btn.classList.toggle('text-white', pressed);
+      btn.classList.toggle('bg-white', !pressed);
+      btn.classList.toggle('text-slate-700', !pressed);
+    }
+
+    function updateToolbarUI() {
+      // Base map buttons
+      document.querySelectorAll('[data-action="base-street"]').forEach(b => setSegmentActive(b, currentBase === 'street'));
+      document.querySelectorAll('[data-action="base-satellite"]').forEach(b => setSegmentActive(b, currentBase === 'satellite'));
+
+      // Follow toggle
+      document.querySelectorAll('[data-action="follow"]').forEach(b => setPressed(b, tripState.isCentering));
+
+      // Recenter enabled/disabled
+      const disableRecenter = !busMarker;
+      document.querySelectorAll('[data-action="recenter"]').forEach(b => {
+        b.disabled = disableRecenter;
+        b.classList.toggle('opacity-50', disableRecenter);
+        b.classList.toggle('cursor-not-allowed', disableRecenter);
+      });
+
+      // Fullscreen pressed state
+      const isFs = !!document.fullscreenElement || (typeof map.isFullscreen === 'function' && map.isFullscreen());
+      document.querySelectorAll('[data-action="toggle-fullscreen"]').forEach(b => setPressed(b, isFs));
+    }
+
+    function setBase(base) {
+      if (base === currentBase) return;
+      if (base === 'street') {
+        if (map.hasLayer(satelliteMap)) map.removeLayer(satelliteMap);
+        if (!map.hasLayer(streetMap)) streetMap.addTo(map);
+      } else {
+        if (map.hasLayer(streetMap)) map.removeLayer(streetMap);
+        if (!map.hasLayer(satelliteMap)) satelliteMap.addTo(map);
+      }
+      currentBase = base;
+      updateToolbarUI();
+    }
+
+    function recenterOnBus() {
+      if (busMarker) {
+        tripState.isCentering = true;
+        map.flyTo(busMarker.getLatLng(), Math.max(map.getZoom(), 15), { animate: true, duration: 0.9 });
+        updateToolbarUI();
+      } else if (routePolyline) {
+        map.fitBounds(routePolyline.getBounds(), { padding: [40, 40] });
+      }
+    }
+
+    function toggleFollow() {
+      tripState.isCentering = !tripState.isCentering;
+      updateToolbarUI();
+    }
+
+    function toggleFullscreen() {
+      if (typeof map.toggleFullscreen === 'function') {
+        map.toggleFullscreen();
+      } else {
+        const container = map.getContainer();
+        if (!document.fullscreenElement) container.requestFullscreen().catch(() => {});
+        else document.exitFullscreen();
+      }
+      updateToolbarUI();
+    }
+
+  function onToolbar(action, handler) {
+  const buttons = document.querySelectorAll(`[data-action="${action}"]`);
+  if (buttons.length === 0) {
+    console.warn(`No toolbar buttons found with data-action="${action}"`);
+  }
+  buttons.forEach(btn => {
+    btn.addEventListener('click', handler);
+  });
+}
+
+    function attachToolbarEvents() {
+      onToolbar('zoom-in', () => map.zoomIn());
+      onToolbar('zoom-out', () => map.zoomOut());
+      onToolbar('recenter', recenterOnBus);
+      onToolbar('follow', toggleFollow);
+      onToolbar('toggle-fullscreen', toggleFullscreen);
+      onToolbar('base-street', () => setBase('street'));
+      onToolbar('base-satellite', () => setBase('satellite'));
+
+      map.on('dragstart', () => { tripState.isCentering = false; updateToolbarUI(); });
+      document.addEventListener('fullscreenchange', updateToolbarUI);
+      updateToolbarUI();
+    }
+    attachToolbarEvents();
+
+    // --- SOCKET.IO & REAL-TIME LOGIC ---
+    const socket = io();
+    socket.emit('joinBusRoom', tripState.busId);
+
+    function resetTripState() {
+      tripState.arrivalTimes.clear();
+      tripState.lastArrivedStopIndex = -1;
+      tripState.currentNextStopIndex = null;
+      if (progressPolyline) progressPolyline.setLatLngs([]);
+      if (routeProgressFill) routeProgressFill.style.width = '0%';
+      stopElements.forEach(el => {
+        el.classList.remove('is-arrived', 'is-next');
+        el.querySelectorAll('.arrival-label, .eta-label, .distance-label, .next-stop-label, .delay-label').forEach(lbl => lbl.classList.add('hidden'));
+      });
+    }
+
+    function updateStatusUI(isLive) {
+      // Shimmer on online
+      statusIndicator.classList.toggle('bg-green-100', isLive);
+
+      // Chip colors
+      statusChip.classList.toggle('bg-red-50/90', !isLive);
+      statusChip.classList.toggle('border-red-100/80', !isLive);
+      statusChip.classList.toggle('bg-green-50/90', isLive);
+      statusChip.classList.toggle('border-green-100/80', isLive);
+
+      // Dot + text
+      statusDot.classList.toggle('bg-red-500', !isLive);
+      statusDot.classList.toggle('bg-green-500', isLive);
+      statusText.textContent = isLive ? 'LIVE' : 'OFFLINE';
+      statusText.classList.toggle('text-red-700', !isLive);
+      statusText.classList.toggle('text-green-700', isLive);
+
+      if (isLive && !trackingLive) resetTripState();
+      if (!isLive && busMarker) {
+        map.removeLayer(busMarker);
+        busMarker = null;
+        tripState.lastLocation = null;
+      }
+      trackingLive = isLive;
+      updateToolbarUI();
+    }
+
+    // --- INITIAL STATE ---
+    updateStatusUI(!!busData.trackingStarted);
+    if (busData.trackingStarted && busData.currentLocation?.lat) {
+      const initialCoords = L.latLng(busData.currentLocation.lat, busData.currentLocation.lng);
+      busMarker = L.marker(initialCoords, { icon: busIcon }).addTo(map).bindPopup("Waiting for movement...");
+      tripState.lastLocation = { latlng: initialCoords, timestamp: Date.now(), bearing: 0 };
+      processLocationUpdate(busData.currentLocation);
+      updateToolbarUI();
+    }
+
+    // --- EVENTS ---
+    socket.on('locationUpdate', (newCoords) => {
+      updateStatusUI(true);
+      processLocationUpdate(newCoords);
+    });
+    socket.on('trackingStopped', () => updateStatusUI(false));
+
+    // --- CORE LOGIC ---
+ function processLocationUpdate(coords) {
+  const endLatLng = L.latLng(coords.lat, coords.lng);
+
+  let currentSpeed = 0;
+  let bearing = tripState.lastLocation?.bearing || 0;
+  let animationDuration = 1000;
+
+  if (tripState.lastLocation) {
+    const distanceMeters = endLatLng.distanceTo(tripState.lastLocation.latlng);
+    const timeSeconds = (Date.now() - tripState.lastLocation.timestamp) / 1000;
+    animationDuration = timeSeconds * 1000; // duration is time in seconds converted to milliseconds
+
+    if (timeSeconds > 0.1 && distanceMeters > 1) {
+      currentSpeed = (distanceMeters / timeSeconds) * 3.6; // Convert m/s to km/h
+      bearing = calculateBearing(tripState.lastLocation.latlng, endLatLng);
+      tripState.recentSpeeds.push(currentSpeed);
+
+      // Keep only the latest N speed samples
+      if (tripState.recentSpeeds.length > ROLLING_AVERAGE_SAMPLES) {
+        tripState.recentSpeeds.shift();
+      }
+    }
+  }
+
+  // If the bus marker doesn't exist, create it
+  if (!busMarker) {
+    busMarker = L.marker(endLatLng, { icon: busIcon }).addTo(map);
+    updateToolbarUI(); // Ensure the toolbar UI is updated if necessary
+  } else {
+    const startLatLng = busMarker.getLatLng();
+    let startTime = performance.now();
+
+    // If there's an ongoing animation, cancel it before starting a new one
+    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+
+    const animateMarker = () => {
+      const elapsed = performance.now() - startTime;
+      const progress = Math.min(elapsed / animationDuration, 1); // Progress from 0 to 1
+
+      const lat = startLatLng.lat + (endLatLng.lat - startLatLng.lat) * progress;
+      const lng = startLatLng.lng + (endLatLng.lng - startLatLng.lng) * progress;
+
+      busMarker.setLatLng([lat, lng]);
+
+      // Continue animation until progress reaches 1
+      if (progress < 1) {
+        animationFrameId = requestAnimationFrame(animateMarker);
+      }
+    };
+
+    // Start the animation
+    animationFrameId = requestAnimationFrame(animateMarker);
+  }
+
+  // Update the icon's rotation based on bearing
+  const iconElement = busMarker.getElement()?.querySelector('.bus-icon-rotated');
+  if (iconElement) {
+    iconElement.style.transform = `rotate(${bearing}deg)`;
+  }
+
+  // Set the content of the marker's popup with the current speed
+  busMarker.setPopupContent(`<b>Speed:</b> ${currentSpeed.toFixed(1)} km/h`);
+
+  // Update the last location and timestamp
+  tripState.lastLocation = { latlng: endLatLng, timestamp: Date.now(), bearing };
+
+  // If centering is enabled, pan the map to the new location
+  if (tripState.isCentering) {
+    map.panTo(endLatLng, { animate: true });
+  }
+
+  // Update other UI elements related to the stop list and progress line
+  updateStopListUI(coords);
+  updateProgressLine(coords);
+}
+
+
+ function updateStopListUI(busCoords) {
+  let nextStopFound = false;
+
+  stopElements.forEach(stopEl => {
+    const stopIndex = parseInt(stopEl.dataset.stopIndex, 10);
+    const stopLatLng = L.latLng(
+      parseFloat(stopEl.dataset.stopLat),
+      parseFloat(stopEl.dataset.stopLng)
+    );
+
+    // Hide dynamic labels by default
+    const nextStopLabel = stopEl.querySelector('.next-stop-label');
+    const etaLabel = stopEl.querySelector('.eta-label');
+    const distanceLabel = stopEl.querySelector('.distance-label');
+    const delayLabel = stopEl.querySelector('.delay-label');
+    [nextStopLabel, etaLabel, distanceLabel, delayLabel].forEach(el => el.classList.add('hidden'));
+
+    // Distance from current location to this stop
+    const distance = tripState.lastLocation.latlng.distanceTo(stopLatLng);
+
+    // Handle arrival
+    if (distance < ARRIVAL_THRESHOLD_METERS && !tripState.arrivalTimes.has(stopIndex)) {
+      const formattedTime = new Date().toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: true
+      });
+      tripState.arrivalTimes.set(stopIndex, formattedTime);
+      tripState.lastArrivedStopIndex = Math.max(tripState.lastArrivedStopIndex, stopIndex);
+    }
+
+    // If already arrived
+    if (tripState.arrivalTimes.has(stopIndex)) {
+      stopEl.classList.add('is-arrived');
+      stopEl.classList.remove('is-next');
+
+      const arrivalLabel = stopEl.querySelector('.arrival-label');
+      arrivalLabel.classList.remove('hidden');
+      arrivalLabel.querySelector('.arrival-time').textContent = tripState.arrivalTimes.get(stopIndex);
+      return;
+    }
+
+    // Not yet arrived
+    stopEl.classList.remove('is-arrived');
+
+    if (!nextStopFound) {
+      nextStopFound = true;
+      stopEl.classList.add('is-next');
+      nextStopLabel.classList.remove('hidden');
+
+      // Scroll into view if it's a new next stop
+      if (tripState.currentNextStopIndex !== stopIndex) {
+        stopEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        tripState.currentNextStopIndex = stopIndex;
+      }
+
+      // Distance & ETA calculation
+      const distanceKm = distance / 1000;
+      const avgSpeed = tripState.recentSpeeds.length > 0
+        ? tripState.recentSpeeds.reduce((a, b) => a + b, 0) / tripState.recentSpeeds.length
+        : AVERAGE_BUS_SPEED_KMPH;
+
+      const speedForEta = avgSpeed > 5 ? avgSpeed : AVERAGE_BUS_SPEED_KMPH;
+      const etaMinutes = (distanceKm / speedForEta) * 60;
+      const etaTime = new Date(Date.now() + etaMinutes * 60000);
+
+      // Update distance label
+      distanceLabel.querySelector('.distance-value').textContent = `${distanceKm.toFixed(1)} km`;
+      distanceLabel.classList.remove('hidden');
+
+      // Update ETA label
+      etaLabel.querySelector('.eta-time').textContent = etaTime.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: true
+      });
+      etaLabel.querySelector('.eta-relative').textContent = `(in ${formatRelativeTime(etaMinutes)})`;
+      etaLabel.classList.remove('hidden');
+
+      // Delay / Schedule logic
+      const scheduledTimeStr = stopEl.dataset.scheduledTime;
+      const scheduledDate = parseTimeToDate(scheduledTimeStr);
+
+      if (scheduledDate instanceof Date && !isNaN(scheduledDate.getTime())) {
+        const delayMinutes = Math.round((etaTime - scheduledDate) / 60000);
+        const statusSpan = delayLabel.querySelector('.delay-status');
+
+        if (Math.abs(delayMinutes) <= 2) {
+          statusSpan.textContent = "On Time";
+          statusSpan.className = 'delay-status font-bold text-green-600';
+        } else if (delayMinutes > 2) {
+          statusSpan.textContent = `Delayed by ${formatRelativeTime(delayMinutes)}`;
+          statusSpan.className = 'delay-status font-bold text-red-600';
+        } else {
+          statusSpan.textContent = `Early by ${formatRelativeTime(-delayMinutes)}`;
+          statusSpan.className = 'delay-status font-bold text-yellow-600';
+        }
+
+        delayLabel.classList.remove('hidden');
+      }
+    } else {
+      stopEl.classList.remove('is-next');
+    }
+  });
+}
+
+    function updateProgressLine(busCoords) {
+      if (!progressPolyline || !tripState.fullRouteCoords) return;
+      const busLatLng = L.latLng(busCoords.lat, busCoords.lng);
+      const closest = findClosestPointOnPolyline(busLatLng, tripState.fullRouteCoords);
+      if (!closest.point) return;
+
+      const progressCoords = tripState.fullRouteCoords.slice(0, closest.index + 1);
+      progressCoords.push(closest.point);
+      progressPolyline.setLatLngs(progressCoords);
+
+      // Update route progress bar (approx using lengths)
+      try {
+        const totalLen = polylineLength(tripState.fullRouteCoords);
+        const progressLen = polylineLength(progressCoords);
+        const pct = totalLen > 0 ? Math.min(100, Math.max(0, (progressLen / totalLen) * 100)) : 0;
+        if (routeProgressFill) routeProgressFill.style.width = pct.toFixed(1) + '%';
+      } catch (e) {}
+    }
+  });
+  </script>
+</body>
+</html>
+
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.6); }
+    70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+}
+
+/* --- Status Indicator Animation --- */
+#status-indicator.is-live #status-dot {
+    animation: live-pulse 1.5s infinite;
+}
+
+@keyframes live-pulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 7px rgba(34, 197, 94, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+
+//track 2
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Live Track: Bus <%= bus.busNumber %></title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.fullscreen@2.4.0/Control.FullScreen.css" />
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/css/tracker-styles.css"> </head>
+<style>
+  /* --- Base Styles --- */
+body {
+    font-family: 'Inter', sans-serif;
+}
+
+/* --- Glassmorphism Card Effect --- */
+.glass-card {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+/* --- Leaflet Map Customizations --- */
+.leaflet-tooltip {
+    background-color: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(5px);
+    border: 1px solid #FFF;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    color: #333;
+    font-weight: bold;
+    padding: 6px 10px;
+}
+
+.leaflet-div-icon {
+    background: none;
+    border: none;
+}
+
+.bus-icon-rotated {
+    transition: transform 0.5s linear;
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));
+}
+
+/* --- Stop List Timeline Styling --- */
+.stop-item {
+    position: relative;
+    padding-left: 50px;
+    padding-bottom: 24px;
+    min-height: 80px;
+}
+
+.stop-connector {
+    position: absolute;
+    left: 17px;
+    top: 35px;
+    width: 4px;
+    height: calc(100% - 15px);
+    background-color: #e5e7eb; /* Unvisited part of the route */
+    z-index: 1;
+}
+
+.stop-connector-progress {
+    position: absolute;
+    left: 17px;
+    top: 35px;
+    width: 4px;
+    height: 0; /* Animated with JS */
+    background: linear-gradient(to top, #3b82f6, #60a5fa);
+    transition: height 0.5s linear;
+    z-index: 2;
+}
+
+.stop-dot {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: #4b5563;
+    background-color: #fff;
+    border: 3px solid #d1d5db;
+    transition: all 0.3s ease;
+    z-index: 3;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+/* --- Stop Item States --- */
+.stop-item.is-arrived .stop-dot {
+    background-color: #10b981;
+    border-color: #10b981;
+    color: white;
+}
+.stop-item.is-arrived .stop-connector { background-color: #10b981; }
+.stop-item.is-arrived .stop-name { color: #6b7280; text-decoration: line-through; }
+
+
+.stop-item.is-next .stop-dot {
+    background-color: #3b82f6;
+    border-color: #3b82f6;
+    color: white;
+    animation: pulse 2s infinite;
+}
+
+.stop-item.is-upcoming .stop-dot {
+    background-color: #fff;
+    border-color: #d1d5db;
+}
+
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.6); }
+    70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+}
+
+/* --- Status Indicator Animation --- */
+#status-indicator.is-live #status-dot {
+    animation: live-pulse 1.5s infinite;
+}
+
+@keyframes live-pulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 7px rgba(34, 197, 94, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+</style>
+<body class="bg-gray-100 flex flex-col h-screen overflow-hidden">
+    
+    <div id="map" class="absolute top-0 left-0 w-full h-full z-0"></div>
+
+    <div class="relative z-10 p-3 md:p-4 flex flex-col h-full pointer-events-none">
+        
+        <header class="flex items-start justify-between gap-3 pointer-events-auto">
+            <a href="/" class="glass-card flex items-center gap-2 p-2 pr-4 rounded-full shadow-lg hover:shadow-xl transition-shadow">
+                <span class="bg-white/80 w-8 h-8 rounded-full flex items-center justify-center text-blue-600">
+                    <i class="fas fa-arrow-left text-sm"></i>
+                </span>
+                <span class="font-bold text-gray-800 text-sm md:text-base hidden sm:block">Back</span>
+            </a>
+            <div class="glass-card text-center p-3 rounded-2xl shadow-lg flex-grow max-w-sm">
+                <h1 class="font-extrabold text-gray-800 text-lg leading-tight">Bus <%= bus.busNumber %></h1>
+                <p class="text-xs text-gray-600 font-medium"><%= bus.routeName %></p>
+            </div>
+            <div id="status-indicator" class="glass-card flex items-center gap-2 p-3 rounded-full shadow-lg text-red-600 bg-red-100/80">
+                <div id="status-dot" class="w-2.5 h-2.5 bg-red-500 rounded-full"></div>
+                <span id="status-text" class="font-bold text-sm">OFFLINE</span>
+            </div>
+        </header>
+
+        <main style="color: #2563eb;" class="flex-grow flex flex-col md:flex-row justify-end md:justify-between items-end gap-4 mt-4">
+            
+            <aside id="desktop-stop-list" class="hidden md:flex flex-col h-full max-h-[85vh] w-[380px] glass-card rounded-2xl shadow-lg pointer-events-auto">
+                <div class="p-4 border-b border-white/50">
+                    <h2 class="text-xl font-bold text-gray-800">Route Stops</h2>
+                    <p class="text-sm text-gray-600"><span id="total-stops"><%= bus.stops.length %></span> stops on this route</p>
+                </div>
+                <div class="flex-grow overflow-y-auto p-4 stop-list-container">
+                    </div>
+            </aside>
+            
+            <div class="flex flex-col items-end gap-3 self-end pointer-events-auto w-full md:w-auto">
+                 <div class="flex gap-3">
+                    <button id="recenter-btn" title="Center on Bus" class="glass-card w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-blue-600 hover:bg-white/80 transition hidden">
+                         <i class="fas fa-location-crosshairs text-xl"></i>
+                    </button>
+                     <button id="toggle-stops-btn" title="Show Stops" class="md:hidden glass-card w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-blue-600 hover:bg-white/80 transition">
+                         <i class="fas fa-route text-xl"></i>
+                    </button>
+                 </div>
+
+                <div id="summary-card" class="glass-card p-4 rounded-2xl shadow-lg w-full max-w-sm text-center md:text-left hidden">
+                     <p class="text-sm font-medium text-gray-600">Next Stop</p>
+                     <h3 id="summary-next-stop" class="text-2xl font-bold text-gray-900 truncate">Calculating...</h3>
+                     <div class="h-1 w-16 bg-blue-500 rounded-full my-3 mx-auto md:mx-0"></div>
+                     <div class="flex justify-around md:justify-start gap-4 text-sm">
+                         <div>
+                            <p class="font-semibold text-gray-500">ETA</p>
+                            <p id="summary-eta" class="font-bold text-lg text-blue-600">--:--</p>
+                         </div>
+                         <div>
+                            <p class="font-semibold text-gray-500">Speed</p>
+                            <p id="summary-speed" class="font-bold text-lg text-gray-800">0 km/h</p>
+                         </div>
+                         <div>
+                            <p class="font-semibold text-gray-500">Progress</p>
+                            <p id="summary-progress" class="font-bold text-lg text-gray-800">0/<%= bus.stops.length %></p>
+                         </div>
+                     </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <div id="mobile-stop-sheet" class="fixed bottom-0 left-0 w-full h-[80vh] bg-white/90 backdrop-blur-xl rounded-t-3xl shadow-2xl z-20 transform translate-y-full transition-transform duration-300 ease-in-out pointer-events-auto">
+        <div class="p-4 flex flex-col h-full">
+            <div class="flex-shrink-0 text-center mb-2">
+                 <div class="w-10 h-1.5 bg-gray-300 rounded-full mx-auto cursor-pointer" id="close-stops-btn"></div>
+                 <h2 class="text-xl font-bold text-gray-800 mt-2">Route Stops</h2>
+            </div>
+            <div class="flex-grow overflow-y-auto stop-list-container ">
+                 </div>
+        </div>
+    </div>
+
+
+    <script>const busData = <%- JSON.stringify(bus) %>;</script>
+    
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.fullscreen@2.4.0/Control.FullScreen.js"></script>
+    <!-- <script src="/js/tracker.js"></script> -->
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+    if (typeof busData === 'undefined') return;
+
+    // --- CONFIGURATION ---
+    const AVERAGE_BUS_SPEED_KMPH = 35;
+    const ARRIVAL_THRESHOLD_METERS = 75;
+    const ROLLING_AVERAGE_SAMPLES = 5;
+
+    // --- DOM ELEMENTS ---
+    const statusIndicator = document.getElementById('status-indicator');
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const recenterBtn = document.getElementById('recenter-btn');
+    const summaryCard = document.getElementById('summary-card');
+    const summaryNextStop = document.getElementById('summary-next-stop');
+    const summaryEta = document.getElementById('summary-eta');
+    const summarySpeed = document.getElementById('summary-speed');
+    const summaryProgress = document.getElementById('summary-progress');
+    const stopListContainers = document.querySelectorAll('.stop-list-container');
+    const toggleStopsBtn = document.getElementById('toggle-stops-btn');
+    const mobileStopSheet = document.getElementById('mobile-stop-sheet');
+    const closeStopsBtn = document.getElementById('close-stops-btn');
+
+    // --- STATE MANAGEMENT ---
+    const tripState = {
+        busId: busData._id,
+        arrivalTimes: new Map(),
+        lastLocation: null,
+        recentSpeeds: [],
+        isCentering: true,
+        lastArrivedStopIndex: -1,
+        fullRouteCoords: null,
+        currentNextStopIndex: -1,
+    };
+
+    // --- MAP INITIALIZATION ---
+    const initialLat = busData.currentLocation?.lat || busData.stops[0]?.lat || 19.3149;
+    const initialLng = busData.currentLocation?.lng || busData.stops[0]?.lng || 84.7941;
+    const map = L.map('map', { fullscreenControl: true, zoomControl: false }).setView([initialLat, initialLng], 14);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    // --- TILE LAYERS ---
+    const streetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    // --- ICONS & MAP LAYERS ---
+    const busIcon = L.divIcon({
+        html: `<img src="/bus-school.png" class="bus-icon-rotated" style="width:40px; height:40px;">`,
+        className: '', iconSize: [40, 40], iconAnchor: [20, 20]
+    });
+    let busMarker = null;
+    let routePolyline = null;
+    let progressPolyline = null;
+    let pastRoutePolyline = null;
+    
+    // --- STOP LIST GENERATION ---
+// Select ALL containers that should hold the stop list
+// const stopListContainers = document.querySelectorAll('.stop-list-container');
+
+  function generateStopList() {
+    if (!busData.stops || busData.stops.length === 0) return;
+    const stopHtml = busData.stops.map((stop, index) => {
+      const isLast = index === busData.stops.length - 1;
+      return `
+        <div class="stop-item" data-stop-index="${index}" data-stop-lat="${stop.lat}" data-stop-lng="${stop.lng}" data-scheduled-time="${stop.scheduledTime || ''}">
+          ${!isLast ? '<div class="stop-connector"></div><div class="stop-connector-progress"></div>' : ''}
+          <div class="stop-dot">
+            <i class="fas fa-check text-base hidden"></i>
+            <span class="stop-number">${index + 1}</span>
+          </div>
+          <div class="ml-4">
+            <p class="font-bold text-gray-800 stop-name">${stop.name}</p>
+            <p class="text-xs text-gray-500">Scheduled: ${formatTime(stop.scheduledTime)}</p>
+            <div class="arrival-label text-sm text-green-600 font-semibold  mt-1">Arrived: <span class="arrival-time"></span></div>
+            <div class="eta-details text-sm text-gray-600  mt-1">
+              <span class="eta-label font-bold text-blue-600"> Expected at <span class="eta-time"></span></span>
+              (<span class="distance-value"></span> away)
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+    stopListContainers.forEach(container => container.innerHTML = stopHtml);
+  }  
+
+    // --- ROUTE DRAWING LOGIC ---
+    async function initializeRoute() {
+        if (!busData.stops || busData.stops.length < 2) return;
+
+        // Add numbered stop markers with tooltips
+        busData.stops.forEach((stop, i) => {
+            const stopMarkerIcon = L.divIcon({
+                html: `<div class="w-6 h-6 rounded-full bg-white border-2 border-gray-500 flex items-center justify-center font-bold text-xs text-gray-700">${i + 1}</div>`,
+                className: 'stop-marker-icon',
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
+            });
+            L.marker([stop.lat, stop.lng], { icon: stopMarkerIcon })
+             .addTo(map)
+             .bindTooltip(stop.name, { permanent: false, direction: 'top', offset: [0, -12] });
+        });
+
+        const coordsString = busData.stops.map(stop => `${stop.lng},${stop.lat}`).join(';');
+        const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`;
+        
+        try {
+            const response = await fetch(osrmUrl);
+            if (!response.ok) throw new Error('OSRM request failed');
+            const routeData = await response.json();
+            if (routeData.routes && routeData.routes.length > 0) {
+                const detailedCoords = routeData.routes[0].geometry.coordinates.map(p => [p[1], p[0]]);
+                tripState.fullRouteCoords = detailedCoords;
+                
+                // Full route (dashed grey)
+                routePolyline = L.polyline(detailedCoords, { color: '#a0aec0', weight: 6, opacity: 0.8, dashArray: '8, 8' }).addTo(map);
+                
+                // Past route (faded solid)
+                pastRoutePolyline = L.polyline([], { color: '#cbd5e0', weight: 7, opacity: 0.9 }).addTo(map);
+
+                // Progress route (gradient)
+                const gradient = {
+                    "type": "linear",
+                    "positions": { "x1": 0, "y1": 0, "x2": 100, "y2": 0 },
+                    "colors": [{ "offset": 0, "color": "#60a5fa" }, { "offset": 100, "color": "#3b82f6" }]
+                };
+                 // This is a conceptual gradient; Leaflet doesn't support gradients natively.
+                 // We simulate it with a solid color, but a plugin like 'Leaflet.Polyline.Gradient' could be used for a real gradient.
+                progressPolyline = L.polyline([], { color: '#3b82f6', weight: 8 }).addTo(map);
+
+                map.fitBounds(routePolyline.getBounds(), { padding: [50, 50] });
+            } else { throw new Error('No route found by OSRM'); }
+        } catch (error) {
+            console.error("Could not fetch OSRM route, falling back to straight lines:", error);
+            // Fallback for straight lines can be implemented here if needed
+        }
+    }
+    
+    // --- UTILITY FUNCTIONS ---
+    const formatTime = (time) => {
+        if (!time) return 'N/A';
+        const [sHours, minutes] = time.split(':');
+        const hours = parseInt(sHours, 10);
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        const twelveHour = hours % 12 || 12;
+        return `${twelveHour}:${minutes} ${ampm}`;
+    };
+
+    const calculateBearing = (start, end) => {
+        const toRad = (deg) => deg * Math.PI / 180;
+        const toDeg = (rad) => rad * 180 / Math.PI;
+        const y = Math.sin(toRad(end.lng - start.lng)) * Math.cos(toRad(end.lat));
+        const x = Math.cos(toRad(start.lat)) * Math.sin(toRad(end.lat)) - Math.sin(toRad(start.lat)) * Math.cos(toRad(end.lat)) * Math.cos(toRad(end.lng - start.lng));
+        return (toDeg(Math.atan2(y, x)) + 360) % 360;
+    };
+    
+    function findClosestPointOnPolyline(busLatLng, polylineCoords) {
+        let closestPoint = null, minDistance = Infinity, closestSegmentIndex = -1;
+        if (!polylineCoords) return { point: null, index: -1 };
+        for (let i = 0; i < polylineCoords.length - 1; i++) {
+            const p1 = L.latLng(polylineCoords[i]), p2 = L.latLng(polylineCoords[i + 1]);
+            const projected = L.LineUtil.closestPointOnSegment(busLatLng, p1, p2);
+            const distance = busLatLng.distanceTo(projected);
+            if (distance < minDistance) {
+                minDistance = distance;
+                closestPoint = projected;
+                closestSegmentIndex = i;
+            }
+        }
+        return { point: closestPoint, index: closestSegmentIndex };
+    }
+
+    // --- UI UPDATE FUNCTIONS ---
+    const updateStatusUI = (isLive) => {
+        const wasOffline = statusIndicator.classList.contains('bg-red-100/80');
+        
+        statusText.textContent = isLive ? 'LIVE' : 'OFFLINE';
+        statusIndicator.classList.toggle('bg-green-100/80', isLive);
+        statusIndicator.classList.toggle('text-green-600', isLive);
+        statusDot.classList.toggle('bg-green-500', isLive);
+        statusIndicator.classList.toggle('is-live', isLive);
+
+        statusIndicator.classList.toggle('bg-red-100/80', !isLive);
+        statusIndicator.classList.toggle('text-red-600', !isLive);
+        statusDot.classList.toggle('bg-red-500', !isLive);
+
+        if (isLive && wasOffline) {
+            // Reset state if bus just came online
+        }
+
+        recenterBtn.classList.toggle('hidden', !isLive);
+        summaryCard.classList.toggle('hidden', !isLive);
+
+        if (!isLive && busMarker) {
+            map.removeLayer(busMarker);
+            busMarker = null;
+            tripState.lastLocation = null;
+        }
+    };
+
+   function updateStopListUI(busCoords) {
+    // Get ALL containers, both desktop and mobile
+    const allStopContainers = document.querySelectorAll('.stop-list-container');
+
+    // Loop through each container (one for desktop, one for mobile)
+    allStopContainers.forEach(container => {
+        // Find stops ONLY within the current container <-- The key change!
+        const stopElements = container.querySelectorAll('.stop-item'); 
+        if (stopElements.length === 0) return; // Skip if this container is empty
+
+        let nextStopFound = false;
+        let nextStopEl = null;
+
+        stopElements.forEach(stopEl => {
+            const stopIndex = parseInt(stopEl.dataset.stopIndex, 10);
+            const stopLatLng = L.latLng(parseFloat(stopEl.dataset.stopLat), parseFloat(stopEl.dataset.stopLng));
+            const distance = tripState.lastLocation.latlng.distanceTo(stopLatLng);
+
+            // Hide all dynamic details initially
+            stopEl.querySelector('.eta-details').classList.add('block');
+            stopEl.querySelector('.arrival-label').classList.add('hidden');
+            stopEl.classList.remove('is-next', 'is-arrived', 'is-upcoming');
+
+            // Handle arrival logic
+            if (distance < ARRIVAL_THRESHOLD_METERS && !tripState.arrivalTimes.has(stopIndex)) {
+                const formattedTime = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true });
+                tripState.arrivalTimes.set(stopIndex, formattedTime);
+                tripState.lastArrivedStopIndex = Math.max(tripState.lastArrivedStopIndex, stopIndex);
+            }
+
+            // Update UI for arrived stops
+            if (tripState.arrivalTimes.has(stopIndex)) {
+                stopEl.classList.add('is-arrived');
+                const arrivalLabel = stopEl.querySelector('.arrival-label');
+                arrivalLabel.classList.remove('hidden');
+                arrivalLabel.querySelector('.arrival-time').textContent = tripState.arrivalTimes.get(stopIndex);
+                stopEl.querySelector('.stop-dot .stop-number').classList.add('hidden');
+                stopEl.querySelector('.stop-dot .fa-check').classList.remove('hidden');
+            } 
+            // Update UI for the next stop
+            else if (!nextStopFound) {
+                nextStopFound = true;
+                nextStopEl = stopEl;
+                stopEl.classList.add('is-next');
+
+                const distanceKm = distance / 1000;
+                const avgSpeed = tripState.recentSpeeds.length > 0 ? tripState.recentSpeeds.reduce((a, b) => a + b, 0) / tripState.recentSpeeds.length : AVERAGE_BUS_SPEED_KMPH;
+                const speedForEta = avgSpeed > 5 ? avgSpeed : AVERAGE_BUS_SPEED_KMPH;
+                const etaMinutes = (distanceKm / speedForEta) * 60;
+                const etaTime = new Date(Date.now() + etaMinutes * 60000);
+
+                const etaDetails = stopEl.querySelector('.eta-details');
+                etaDetails.querySelector('.distance-value').textContent = `${distanceKm.toFixed(1)} km`;
+                etaDetails.querySelector('.eta-time').textContent = etaTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true });
+                etaDetails.classList.remove('hidden');
+
+                // Update the main summary card (only needs to run once)
+                if (container.closest('#desktop-stop-list')) {
+                    summaryNextStop.textContent = stopEl.querySelector('.stop-name').textContent;
+                    summaryEta.textContent = etaTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true });
+                    summaryProgress.textContent = `${stopIndex + 1}/${busData.stops.length}`;
+                }
+                
+                // Conditional scrolling
+                if (tripState.currentNextStopIndex !== stopIndex) {
+                    if (stopEl.offsetParent !== null) { // Only scroll if the element is visible
+                       stopEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                    tripState.currentNextStopIndex = stopIndex;
+                }
+            } 
+            // Update UI for upcoming stops
+            else {
+                stopEl.classList.add('is-upcoming');
+            }
+        });
+        
+        // Update progress of connector line
+        if (nextStopEl) {
+            const lastArrivedStopIndex = tripState.lastArrivedStopIndex;
+            if (lastArrivedStopIndex > -1) {
+                const prevStopEl = container.querySelector(`.stop-item[data-stop-index="${lastArrivedStopIndex}"]`);
+                if(prevStopEl){
+                    const prevStopLatLng = L.latLng(parseFloat(prevStopEl.dataset.stopLat), parseFloat(prevStopEl.dataset.stopLng));
+                    const nextStopLatLng = L.latLng(parseFloat(nextStopEl.dataset.stopLat), parseFloat(nextStopEl.dataset.stopLng));
+
+                    const totalDist = prevStopLatLng.distanceTo(nextStopLatLng);
+                    const coveredDist = prevStopLatLng.distanceTo(tripState.lastLocation.latlng);
+                    let progressPercent = (coveredDist / totalDist) * 100;
+                    progressPercent = Math.max(0, Math.min(100, progressPercent));
+
+                    const progressConnector = prevStopEl.querySelector('.stop-connector-progress');
+                    if (progressConnector) {
+                        progressConnector.style.height = `${progressPercent}%`;
+                    }
+                }
+            }
+        }
+    });
+}
+    
+    function updateProgressLine(busCoords) {
+        if (!progressPolyline || !tripState.fullRouteCoords) return;
+        const busLatLng = L.latLng(busCoords.lat, busCoords.lng);
+        const closest = findClosestPointOnPolyline(busLatLng, tripState.fullRouteCoords);
+        if (!closest.point) return;
+
+        const progressCoords = tripState.fullRouteCoords.slice(0, closest.index + 1);
+        progressCoords.push(closest.point.lat, closest.point.lng);
+        
+        progressPolyline.setLatLngs(progressCoords);
+        pastRoutePolyline.setLatLngs(progressCoords); // For now, past is same as progress
+    }
+
+    // --- CORE LOGIC ---
+    function processLocationUpdate(coords) {
+        const endLatLng = L.latLng(coords.lat, coords.lng);
+        let currentSpeed = 0, bearing = tripState.lastLocation?.bearing || 0;
+        
+        if (tripState.lastLocation) {
+            const distanceMeters = endLatLng.distanceTo(tripState.lastLocation.latlng);
+            const timeSeconds = (Date.now() - tripState.lastLocation.timestamp) / 1000;
+            if (timeSeconds > 0.1 && distanceMeters > 1) {
+                currentSpeed = (distanceMeters / timeSeconds) * 3.6;
+                bearing = calculateBearing(tripState.lastLocation.latlng, endLatLng);
+                tripState.recentSpeeds.push(currentSpeed);
+                if (tripState.recentSpeeds.length > ROLLING_AVERAGE_SAMPLES) tripState.recentSpeeds.shift();
+            }
+        }
+
+        if (!busMarker) {
+            busMarker = L.marker(endLatLng, { icon: busIcon, zIndexOffset: 1000 }).addTo(map);
+        } else {
+            busMarker.setLatLng(endLatLng);
+        }
+
+        const iconElement = busMarker.getElement().querySelector('.bus-icon-rotated');
+        if (iconElement) iconElement.style.transform = `rotate(${bearing}deg)`;
+
+        tripState.lastLocation = { latlng: endLatLng, timestamp: Date.now(), bearing };
+        
+        if (tripState.isCentering) map.panTo(endLatLng, { animate: true, duration: 1 });
+
+        summarySpeed.textContent = `${currentSpeed.toFixed(0)} km/h`;
+        
+        updateStopListUI(coords);
+        updateProgressLine(coords);
+    }
+    
+    // --- EVENT LISTENERS ---
+    recenterBtn.addEventListener('click', () => {
+        tripState.isCentering = true;
+        if (busMarker) map.setView(busMarker.getLatLng(), 16, { animate: true, duration: 1 });
+    });
+    map.on('dragstart', () => tripState.isCentering = false);
+
+    const toggleStopSheet = () => mobileStopSheet.classList.toggle('translate-y-full');
+    toggleStopsBtn.addEventListener('click', toggleStopSheet);
+    closeStopsBtn.addEventListener('click', toggleStopSheet);
+
+    // --- SOCKET.IO ---
+    const socket = io();
+    socket.emit('joinBusRoom', tripState.busId);
+    socket.on('locationUpdate', (newCoords) => {
+        updateStatusUI(true);
+        processLocationUpdate(newCoords);
+    });
+    socket.on('trackingStopped', () => updateStatusUI(false));
+
+    // --- INITIALIZATION ---
+    generateStopList();
+    initializeRoute();
+    updateStatusUI(busData.trackingStarted);
+    if (busData.trackingStarted && busData.currentLocation?.lat) {
+        processLocationUpdate(busData.currentLocation);
+    }
+});
+    </script>
+
+</body>
+</html>
+
+//final track.
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Live Track: Bus <%= bus.busNumber %></title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.fullscreen@2.4.0/Control.FullScreen.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/css/tracker-styles.css">
+</head>
+<style>
+    /* --- CSS Variables for Theming (Light & Dark Mode) --- */
+    :root {
+        --bg-color: #f3f4f6;
+        --card-bg: rgba(255, 255, 255, 0.7);
+        --card-border: rgba(255, 255, 255, 0.4);
+        --text-primary: #1f2937;
+        --text-secondary: #4b5563;
+        --text-subtle: #6b7280;
+        --connector-bg: #e5e7eb;
+        --stop-dot-border: #d1d5db;
+        --stop-dot-bg: #fff;
+        --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    }
+    body.dark-mode {
+        --bg-color: #1f2937;
+        --card-bg: rgba(20, 30, 48, 0.7);
+        --card-border: rgba(56, 73, 106, 0.5);
+        --text-primary: #f9fafb;
+        --text-secondary: #d1d5db;
+        --text-subtle: #9ca3af;
+        --connector-bg: #4b5563;
+        --stop-dot-border: #4b5563;
+        --stop-dot-bg: #374151;
+        --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.2);
+    }
+
+    body { font-family: 'Inter', sans-serif; background-color: var(--bg-color); transition: background-color 0.3s ease; }
+    .glass-card {
+        background: var(--card-bg);
+        border: 1px solid var(--card-border);
+        backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+        transition: background-color 0.3s ease, border-color 0.3s ease;
+        box-shadow: var(--shadow-lg);
+    }
+    .text-primary { color: var(--text-primary); }
+    .text-secondary { color: var(--text-secondary); }
+    .text-subtle { color: var(--text-subtle); }
+
+    .leaflet-tooltip { border-radius: 8px; font-weight: bold; padding: 6px 10px; }
+    .leaflet-div-icon { background: none; border: none; }
+    .bus-icon-rotated { transition: transform 0.5s linear; filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3)); }
+    .map-marker-icon { display: flex; align-items: center; justify-content: center; border-radius: 50%; box-shadow: 0 2px 5px rgba(0,0,0,0.2); font-weight: bold; color: white; border: 2px solid white; }
+    .stop-item { position: relative; padding-left: 50px; padding-bottom: 24px; min-height: 80px; cursor: pointer; }
+    .stop-connector { position: absolute; left: 17px; top: 35px; width: 4px; height: calc(100% - 15px); background-color: var(--connector-bg); z-index: 1; }
+    .stop-connector-progress { position: absolute; left: 17px; top: 35px; width: 4px; height: 0; background: linear-gradient(to top, #3b82f6, #60a5fa); transition: height 0.5s linear; z-index: 2; }
+    .stop-dot { position: absolute; left: 0; top: 0; width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--text-secondary); background-color: var(--stop-dot-bg); border: 3px solid var(--stop-dot-border); transition: all 0.3s ease; z-index: 3; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+
+    .stop-item.is-arrived .stop-dot { background-color: #10b981; border-color: #10b981; color: white; }
+    .stop-item.is-arrived .stop-connector { background-color: #10b981; }
+    .stop-item.is-arrived .stop-name { color: var(--text-subtle); text-decoration: line-through; }
+    .stop-item.is-next .stop-dot { background-color: #3b82f6; border-color: #3b82f6; color: white; animation: pulse 2s infinite; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.6); } 70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); } 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); } }
+    #status-indicator.is-live #status-dot { animation: live-pulse 1.5s infinite; }
+    @keyframes live-pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 7px rgba(34, 197, 94, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); } }
+</style>
+<body class="flex flex-col h-screen overflow-hidden">
+    
+    <div id="map" class="absolute top-0 left-0 w-full h-full z-0"></div>
+
+    <div class="relative z-10 p-3 md:p-4 flex flex-col h-full pointer-events-none">
+        
+        <header class="flex items-start justify-between gap-3 pointer-events-auto">
+            <a href="/" class="glass-card flex items-center gap-2 p-2 pr-4 rounded-full hover:shadow-xl transition-shadow">
+                <span class="bg-white/80 w-8 h-8 rounded-full flex items-center justify-center text-blue-600"><i class="fas fa-arrow-left text-sm"></i></span>
+                <span class="font-bold text-primary text-sm md:text-base hidden sm:block">Back</span>
+            </a>
+            <div class="glass-card text-center p-3 rounded-2xl flex-grow max-w-sm">
+                <h1 class="font-extrabold text-primary text-lg leading-tight">Bus <%= bus.busNumber %></h1>
+                <p class="text-xs text-secondary font-medium"><%= bus.routeName %></p>
+            </div>
+            <div id="status-indicator" class="glass-card flex items-center gap-2 p-3 rounded-full text-red-600 bg-red-100/80">
+                <div id="status-dot" class="w-2.5 h-2.5 bg-red-500 rounded-full"></div>
+                <span id="status-text" class="font-bold text-sm">OFFLINE</span>
+            </div>
+        </header>
+<main class="flex-grow flex flex-col md:flex-row justify-end items-end gap-4 mt-4">
+            <aside id="desktop-stop-list" class="hidden md:flex flex-col h-full max-h-[85vh] w-[380px] glass-card rounded-2xl pointer-events-auto">
+                <div class="p-4 border-b border-white/50">
+                    <h2 class="text-xl font-bold text-primary">Route Stops</h2>
+                    <div class="text-sm text-secondary route-summary"></div>
+                </div>
+                <div class="flex-grow overflow-y-auto p-4 stop-list-container"></div>
+            </aside>
+            
+            <div class="w-full md:w-auto flex-grow flex justify-end items-end">
+                <div class="flex flex-col items-end gap-3  pointer-events-auto w-full md:w-auto">
+                    <div class="flex gap-3">
+                        <button id="recenter-btn" title="Center on Bus" class="glass-card w-12 h-12 rounded-full flex items-center justify-center text-blue-600 hover:bg-white/80 transition hidden"><i class="fas fa-location-crosshairs text-xl"></i></button>
+                        <button id="fullscreen-btn" title="Toggle Fullscreen" class="glass-card w-12 h-12 rounded-full flex items-center justify-center text-blue-600 hover:bg-white/80 transition"><i class="fas fa-expand text-xl"></i></button>
+                        <button id="dark-mode-btn" title="Toggle Dark Mode" class="glass-card w-12 h-12 rounded-full flex items-center justify-center text-blue-600 hover:bg-white/80 transition"><i id="dark-mode-icon" class="fas fa-moon text-xl"></i></button>
+                        <button id="toggle-stops-btn" title="Show Stops" class="md:hidden glass-card w-12 h-12 rounded-full flex items-center justify-center text-blue-600 hover:bg-white/80 transition"><i class="fas fa-route text-xl"></i></button>
+                    </div>
+
+                    <div id="summary-card" class="glass-card p-4 mb-14 rounded-2xl w-full max-w-sm text-center md:text-left hidden">
+                        <p class="text-sm font-medium text-secondary">Next Stop</p>
+                        <h3 id="summary-next-stop" class="text-2xl font-bold text-primary truncate">Calculating...</h3>
+                        <div class="h-1 w-16 bg-blue-500 rounded-full my-3 mx-auto md:mx-0"></div>
+                        <div class="flex justify-around md:justify-start gap-4 text-sm">
+                            <div><p class="font-semibold text-secondary">ETA</p><p id="summary-eta" class="font-bold text-lg text-blue-600">--:--</p></div>
+                            <div><p class="font-semibold text-secondary">Speed</p><p id="summary-speed" class="font-bold text-lg text-primary">0 km/h</p></div>
+                            <div><p class="font-semibold text-secondary">Progress</p><p id="summary-progress" class="font-bold text-lg text-primary">0/<%= bus.stops.length %></p></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="mobile-stop-sheet" class="fixed bottom-0 left-0 w-full h-[80vh] glass-card rounded-t-3xl z-20 transform translate-y-full transition-transform duration-300 ease-in-out pointer-events-auto">
+        <div class="p-4 flex flex-col h-full">
+            <div class="flex-shrink-0 text-center mb-2">
+                 <div class="w-10 h-1.5 bg-gray-300 rounded-full mx-auto cursor-pointer" id="close-stops-btn"></div>
+                 <h2 class="text-xl font-bold text-primary mt-2">Route Stops</h2>
+                 <div class="text-sm text-secondary route-summary"></div>
+            </div>
+            <div class="flex-grow overflow-y-auto  stop-list-container"></div>
+        </div>
+    </div>
+
+    <script>const busData = <%- JSON.stringify(bus) %>;</script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.fullscreen@2.4.0/Control.FullScreen.js"></script>
+    <script>
+document.addEventListener('DOMContentLoaded', () => {
+    if (typeof busData === 'undefined') return;
+
+    // --- CONSTANTS ---
+    const AVERAGE_BUS_SPEED_KMPH = 25;
+    const ARRIVAL_THRESHOLD_METERS = 5
+    ;
+    const ROLLING_AVERAGE_SAMPLES = 5;
+
+    // New constants to make it truly realtime/robust
+    const LOCATION_STALE_MS = 20000;  // mark as STALE if no location for 20s
+    const UI_REFRESH_MS = 5000;       // refresh ETA/delay/speed every 5s even if stationary
+    const MIN_VALID_MOVE_METERS = 1;  // ignore tiny GPS jitter
+    const MIN_VALID_TIME_SEC = 0.1;   // small time step threshold for speed calc
+
+    const dom = {
+        statusIndicator: document.getElementById('status-indicator'),
+        statusDot: document.getElementById('status-dot'),
+        statusText: document.getElementById('status-text'),
+        recenterBtn: document.getElementById('recenter-btn'),
+        summaryCard: document.getElementById('summary-card'),
+        summaryNextStop: document.getElementById('summary-next-stop'),
+        summaryEta: document.getElementById('summary-eta'),
+        summarySpeed: document.getElementById('summary-speed'),
+        summaryProgress: document.getElementById('summary-progress'),
+        stopListContainers: document.querySelectorAll('.stop-list-container'),
+        toggleStopsBtn: document.getElementById('toggle-stops-btn'),
+        mobileStopSheet: document.getElementById('mobile-stop-sheet'),
+        closeStopsBtn: document.getElementById('close-stops-btn'),
+        darkModeBtn: document.getElementById('dark-mode-btn'),
+        darkModeIcon: document.getElementById('dark-mode-icon'),
+        fullscreenBtn: document.getElementById('fullscreen-btn'),
+        routeSummaryContainers: document.querySelectorAll('.route-summary'),
+    };
+
+    const tripState = {
+        busId: busData._id,
+        arrivalTimes: new Map(),
+        lastLocation: null,
+        recentSpeeds: [],
+        currentSpeedKmh: 0,
+        isCentering: true,
+        lastArrivedStopIndex: -1,
+        fullRouteCoords: null,
+        currentNextStopIndex: -1,
+        lastUpdateTs: 0,
+        liveState: 'offline', // 'live' | 'stale' | 'offline'
+    };
+
+    const timers = {
+        uiIntervalId: null,
+        staleTimeoutId: null,
+    };
+
+    const initialLat = busData.currentLocation?.lat || busData.stops[0]?.lat || 19.3149;
+    const initialLng = busData.currentLocation?.lng || busData.stops[0]?.lng || 84.7941;
+    const map = L.map('map', { fullscreenControl: false, zoomControl: false }).setView([initialLat, initialLng], 14);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    const tileLayers = {
+        light: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }),
+        dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; CartoDB' })
+    };
+
+    const busIcon = L.divIcon({
+        html: `<img src="/bus-school.png" class="bus-icon-rotated" style="width:40px; height:40px;">`,
+        className: '',
+        iconSize: [40, 40],
+        iconAnchor: [20, 20]
+    });
+
+    let busMarker = null;
+    let fullRoutePolyline = null;
+    let traveledRoutePolyline = null;
+
+    // --- THEME MANAGEMENT ---
+    const applyTheme = (theme) => {
+        if (theme === 'dark') {
+            document.body.classList.add('dark-mode');
+            if (dom.darkModeIcon) dom.darkModeIcon.classList.replace('fa-moon', 'fa-sun');
+            map.removeLayer(tileLayers.light);
+            tileLayers.dark.addTo(map);
+        } else {
+            document.body.classList.remove('dark-mode');
+            if (dom.darkModeIcon) dom.darkModeIcon.classList.replace('fa-sun', 'fa-moon');
+            map.removeLayer(tileLayers.dark);
+            tileLayers.light.addTo(map);
+        }
+    };
+    const toggleTheme = () => {
+        const currentTheme = document.body.classList.contains('dark-mode') ? 'dark' : 'light';
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        localStorage.setItem('theme', newTheme);
+        applyTheme(newTheme);
+    };
+
+    // --- STOP LIST & ROUTE ---
+    function generateStopList() {
+        if (!busData.stops || busData.stops.length === 0) return;
+        const stopHtml = busData.stops.map((stop, index) => {
+            const isLast = index === busData.stops.length - 1;
+            return `
+                <div class="stop-item" data-stop-index="${index}" data-stop-lat="${stop.lat}" data-stop-lng="${stop.lng}" data-scheduled-time="${stop.scheduledTime}">
+                    ${!isLast ? '<div class="stop-connector"></div><div class="stop-connector-progress"></div>' : ''}
+                    <div class="stop-dot"><i class="fas fa-check text-base hidden"></i><span class="stop-number">${index + 1}</span></div>
+                    <div class="ml-4">
+                        <p class="font-bold text-primary stop-name">${stop.name}</p>
+                        <p class="text-xs text-subtle">Scheduled: ${formatTime(stop.scheduledTime)}</p>
+                        <div class="arrival-label text-sm text-green-600 font-semibold mt-1 hidden">Arrived: <span class="arrival-time"></span></div>
+                        <div class="eta-details text-sm text-secondary mt-1 hidden">
+                            <span class="eta-label font-bold text-blue-600">Expected: <span class="eta-time"></span></span>
+                            (<span class="distance-value"></span> away)
+                        </div>
+                        <div class="delay-label text-sm mt-1 hidden">
+                             <span class="delay-status"></span>
+                        </div>
+                    </div>
+                </div>`;
+        }).join('');
+        dom.stopListContainers.forEach(container => container.innerHTML = stopHtml);
+    }
+
+    // async function initializeRoute() {
+    //     if (!busData.stops || busData.stops.length < 2) return;
+    //     busData.stops.forEach((stop, i) => {
+    //         const isFirst = i === 0, isLast = i === busData.stops.length - 1;
+    //         const iconHtml = isFirst
+    //             ? `<div class="map-marker-icon w-8 h-8 bg-green-500"><i class="fas fa-play text-sm"></i></div>`
+    //             : isLast
+    //             ? `<div class="map-marker-icon w-8 h-8 bg-gray-800"><i class="fas fa-flag-checkered text-sm"></i></div>`
+    //             : `<div class="map-marker-icon w-7 h-7 bg-gray-500 text-xs">${i + 1}</div>`;
+    //         L.marker([stop.lat, stop.lng], { icon: L.divIcon({ html: iconHtml, className: '' }), zIndexOffset: 500 })
+    //           .addTo(map).bindTooltip(stop.name, { permanent: false, direction: 'top' });
+    //     });
+
+    //     const coordsString = busData.stops.map(stop => `${stop.lng},${stop.lat}`).join(';');
+    //     const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson&summary=true`;
+    //     try {
+    //         const response = await fetch(osrmUrl);
+    //         const routeData = await response.json();
+    //         if (routeData.routes && routeData.routes.length > 0) {
+    //             const route = routeData.routes[0];
+    //             tripState.fullRouteCoords = route.geometry.coordinates.map(p => [p[1], p[0]]);
+    //             fullRoutePolyline = L.polyline(tripState.fullRouteCoords, { color: '#a0aec0', weight: 6, opacity: 0.8, dashArray: '8, 8' }).addTo(map);
+    //             traveledRoutePolyline = L.polyline([], { color: '#3b82f6', weight: 8 }).addTo(map);
+    //             map.fitBounds(fullRoutePolyline.getBounds(), { padding: [50, 50] });
+
+    //             const totalKm = (route.distance / 1000).toFixed(1);
+    //             const totalMinutes = Math.round(route.duration / 60);
+    //             dom.routeSummaryContainers.forEach(el => {
+    //                 el.innerHTML = `<span><i class="fas fa-road"></i> ${totalKm} km</span> &bull; <span><i class="fas fa-clock"></i> ${totalMinutes} min trip</span>`;
+    //             });
+    //         }
+    //     } catch (error) {
+    //         console.error("Could not fetch OSRM route:", error);
+    //     }
+    // }
+    // Build an OSRM route for a single leg and return geometry + metrics
+async function routeLeg(from, to) {
+    const coords = `${from.lng},${from.lat};${to.lng},${to.lat}`;
+    const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false&alternatives=false&continue_straight=false&annotations=false&radiuses=50;50`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`OSRM ${res.status}`);
+    const data = await res.json();
+    if (!data.routes || !data.routes[0]) throw new Error('No route for leg');
+    const route = data.routes[0];
+    const legLatLngs = route.geometry.coordinates.map(p => [p[1], p[0]]);
+    return { coords: legLatLngs, distance: route.distance, duration: route.duration }; // meters, seconds
+}
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+async function initializeRoute() {
+    if (!busData.stops || busData.stops.length < 2) return;
+
+    // Keep your stop markers as-is
+    busData.stops.forEach((stop, i) => {
+        const isFirst = i === 0, isLast = i === busData.stops.length - 1;
+        const iconHtml = isFirst
+            ? `<div class="map-marker-icon w-8 h-8 bg-green-500"><i class="fas fa-play text-sm"></i></div>`
+            : isLast
+            ? `<div class="map-marker-icon w-8 h-8 bg-gray-800"><i class="fas fa-flag-checkered text-sm"></i></div>`
+            : `<div class="map-marker-icon w-7 h-7 bg-gray-500 text-xs">${i + 1}</div>`;
+        L.marker([stop.lat, stop.lng], { icon: L.divIcon({ html: iconHtml, className: '' }), zIndexOffset: 500 })
+          .addTo(map).bindTooltip(stop.name, { permanent: false, direction: 'top' });
+    });
+
+    // Ensure polylines exist
+    if (fullRoutePolyline) map.removeLayer(fullRoutePolyline);
+    fullRoutePolyline = L.polyline([], { color: '#4829F5', weight: 6, opacity: 0.8, dashArray: '8, 8' }).addTo(map);
+    if (!traveledRoutePolyline) {
+        traveledRoutePolyline = L.polyline([], { color: '#3b82f6', weight: 8 }).addTo(map);
+    }
+
+    const aggregated = [];
+    let totalDistance = 0; // meters
+    let totalDuration = 0; // seconds
+
+    // Build the route leg-by-leg (stop[i] -> stop[i+1])
+    for (let i = 0; i < busData.stops.length - 1; i++) {
+        const from = busData.stops[i];
+        const to = busData.stops[i + 1];
+        try {
+            const leg = await routeLeg(from, to);
+            totalDistance += leg.distance;
+            totalDuration += leg.duration;
+
+            // Append, avoiding duplicate joint point
+            if (aggregated.length === 0) {
+                aggregated.push(...leg.coords);
+            } else {
+                aggregated.push(...leg.coords.slice(1));
+            }
+
+            // Update dashed route progressively (nice visual while loading)
+            fullRoutePolyline.setLatLngs(aggregated);
+        } catch (err) {
+            // Per-leg fallback: straight segment if OSRM fails for this leg
+            const a = L.latLng(from.lat, from.lng);
+            const b = L.latLng(to.lat, to.lng);
+            const legDist = a.distanceTo(b); // meters
+            const legDur = (legDist / 1000) / AVERAGE_BUS_SPEED_KMPH * 3600; // seconds
+
+            totalDistance += legDist;
+            totalDuration += legDur;
+
+            if (aggregated.length === 0) {
+                aggregated.push([from.lat, from.lng], [to.lat, to.lng]);
+            } else {
+                aggregated.push([to.lat, to.lng]);
+            }
+            fullRoutePolyline.setLatLngs(aggregated);
+            console.warn('OSRM leg failed; used straight fallback:', err);
+        }
+
+        // Be polite with the public OSRM server
+        await sleep(120);
+    }
+
+    // Apply the final route to state and map
+    if (aggregated.length > 0) {
+        tripState.fullRouteCoords = aggregated;
+        fullRoutePolyline.setLatLngs(aggregated);
+        map.fitBounds(fullRoutePolyline.getBounds(), { padding: [50, 50] });
+    } else {
+        // If everything failed, fall back to simple stop-to-stop polyline
+        const stopsLatLngs = busData.stops.map(s => [s.lat, s.lng]);
+        tripState.fullRouteCoords = stopsLatLngs;
+        fullRoutePolyline.setLatLngs(stopsLatLngs);
+        map.fitBounds(fullRoutePolyline.getBounds(), { padding: [50, 50] });
+    }
+
+    // Update route summary using real totals (km, minutes)
+    const totalKm = totalDistance / 1000;
+    const totalMinutes = Math.round(totalDuration / 60);
+    dom.routeSummaryContainers.forEach(el => {
+        el.innerHTML = `<span><i class="fas fa-road"></i> ${totalKm.toFixed(1)} km</span> &bull; <span><i class="fas fa-clock"></i> ${totalMinutes} min trip</span>`;
+    });
+}
+    // --- UTILITIES ---
+    const formatTime = (time) => {
+        if (!time) return 'N/A';
+        const [h, m] = time.split(':'); const hours = parseInt(h, 10);
+        return `${hours % 12 || 12}:${m} ${hours >= 12 ? 'PM' : 'AM'}`;
+    };
+
+    const formatRelativeTime = (minutes) => {
+        const absMinutes = Math.abs(Math.round(minutes));
+        if (absMinutes < 1) return 'a minute';
+        if (absMinutes < 60) return `${absMinutes} minutes`;
+        const hours = Math.floor(absMinutes / 60);
+        if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''}`;
+        const days = Math.floor(hours / 24);
+        return `${days} day${days > 1 ? 's' : ''}`;
+    };
+
+    const parseTimeToDate = (timeString) => {
+        if (!timeString || !timeString.includes(':')) return null;
+        const today = new Date();
+        const [hours, minutes] = timeString.split(':').map(Number);
+        today.setHours(hours, minutes, 0, 0);
+        return today;
+    };
+
+    const calculateBearing = (start, end) => {
+        const toRad = deg => deg * Math.PI / 180, toDeg = rad => rad * 180 / Math.PI;
+        const y = Math.sin(toRad(end.lng - start.lng)) * Math.cos(toRad(end.lat));
+        const x = Math.cos(toRad(start.lat)) * Math.sin(toRad(end.lat)) - Math.sin(toRad(start.lat)) * Math.cos(toRad(end.lat)) * Math.cos(toRad(end.lng - start.lng));
+        return (toDeg(Math.atan2(y, x)) + 360) % 360;
+    };
+
+    // FIX: use projected points for closest point on segment (Leaflet expects Points)
+    function findClosestPointOnPolyline(busLatLng, polylineLatLngs) {
+        let closest = { point: null, distance: Infinity, index: -1 };
+        if (!polylineLatLngs || !map || !busLatLng) return closest;
+
+        const busPoint = map.latLngToLayerPoint(busLatLng);
+        for (let i = 0; i < polylineLatLngs.length - 1; i++) {
+            const p1 = map.latLngToLayerPoint(polylineLatLngs[i]);
+            const p2 = map.latLngToLayerPoint(polylineLatLngs[i + 1]);
+            const p = L.LineUtil.closestPointOnSegment(busPoint, p1, p2);
+            const d = busPoint.distanceTo(p);
+            if (d < closest.distance) {
+                closest = { point: map.layerPointToLatLng(p), distance: d, index: i };
+            }
+        }
+        return closest;
+    }
+
+    // --- STATUS / UI MANAGEMENT ---
+    function updateStatusUI(state) {
+        tripState.liveState = state;
+        const indicator = dom.statusIndicator, dot = dom.statusDot, text = dom.statusText;
+
+        if (!indicator || !dot || !text) return;
+
+        // reset classes
+        indicator.classList.remove('bg-green-100/80', 'text-green-600', 'bg-red-100/80', 'text-red-600', 'bg-yellow-100/80', 'text-yellow-600', 'is-live');
+        dot.classList.remove('bg-green-500', 'bg-red-500', 'bg-yellow-500');
+
+        if (state === 'live') {
+            text.textContent = 'LIVE';
+            indicator.classList.add('bg-green-100/80', 'text-green-600', 'is-live');
+            dot.classList.add('bg-green-500');
+            if (dom.recenterBtn) dom.recenterBtn.classList.remove('hidden');
+            if (dom.summaryCard) dom.summaryCard.classList.remove('hidden');
+        } else if (state === 'stale') {
+            text.textContent = 'STALE';
+            indicator.classList.add('bg-yellow-100/80', 'text-yellow-600');
+            dot.classList.add('bg-yellow-500');
+            if (dom.recenterBtn) dom.recenterBtn.classList.remove('hidden');
+            if (dom.summaryCard) dom.summaryCard.classList.remove('hidden');
+        } else { // offline
+            text.textContent = 'OFFLINE';
+            indicator.classList.add('bg-red-100/80', 'text-red-600');
+            dot.classList.add('bg-red-500');
+            if (dom.recenterBtn) dom.recenterBtn.classList.add('hidden');
+            if (dom.summaryCard) dom.summaryCard.classList.add('hidden');
+        }
+    }
+
+    function scheduleStaleCheck() {
+        clearTimeout(timers.staleTimeoutId);
+        timers.staleTimeoutId = setTimeout(() => {
+            if (Date.now() - tripState.lastUpdateTs >= LOCATION_STALE_MS) {
+                // Mark stale and zero speed visually
+                updateStatusUI('stale');
+                tripState.currentSpeedKmh = 0;
+                if (dom.summarySpeed) dom.summarySpeed.textContent = `0 km/h`;
+            }
+        }, LOCATION_STALE_MS + 50);
+    }
+
+    // Safe rotate helper to avoid null element errors
+    function rotateBusMarker(bearingDeg) {
+        if (!busMarker) return;
+        const el = busMarker.getElement();
+        if (!el) {
+            requestAnimationFrame(() => rotateBusMarker(bearingDeg));
+            return;
+        }
+        const img = el.querySelector('.bus-icon-rotated');
+        if (img) img.style.transform = `rotate(${bearingDeg}deg)`;
+    }
+
+    // --- MAIN UI UPDATE LOGIC ---
+    function updateStopListUI() {
+        if (!tripState.lastLocation || !busData.stops?.length) return;
+
+        // cleanup progress visuals first
+        dom.stopListContainers.forEach(c => c.querySelectorAll('.stop-connector-progress').forEach(el => el.style.height = '0%'));
+
+        const avgSpeed = tripState.recentSpeeds.length > 0
+            ? tripState.recentSpeeds.reduce((a, b) => a + b, 0) / tripState.recentSpeeds.length
+            : AVERAGE_BUS_SPEED_KMPH;
+
+        const speedForEta = avgSpeed > 5 ? avgSpeed : AVERAGE_BUS_SPEED_KMPH;
+        const arrivedCount = tripState.arrivalTimes.size;
+
+        if (arrivedCount === busData.stops.length) {
+            if (dom.summaryNextStop) dom.summaryNextStop.textContent = `Trip Completed`;
+            if (dom.summaryEta) dom.summaryEta.textContent = '✔';
+            if (dom.summaryProgress) dom.summaryProgress.textContent = `${busData.stops.length}/${busData.stops.length}`;
+        } else {
+            if (dom.summaryProgress) dom.summaryProgress.textContent = `${Math.min(arrivedCount + 1, busData.stops.length)}/${busData.stops.length}`;
+        }
+
+        dom.stopListContainers.forEach(container => {
+            const stopElements = container.querySelectorAll('.stop-item');
+            if (stopElements.length === 0) return;
+
+            let nextStopFound = false;
+            let cumulativeTimeMinutes = 0;
+            let lastLegStartPoint = tripState.lastLocation.latlng;
+            let nextStopElForProgress = null;
+
+            stopElements.forEach(stopEl => {
+                const stopIndex = parseInt(stopEl.dataset.stopIndex);
+                const stopLatLng = L.latLng(parseFloat(stopEl.dataset.stopLat), parseFloat(stopEl.dataset.stopLng));
+                const distanceToBus = tripState.lastLocation.latlng.distanceTo(stopLatLng);
+
+                // Reset UI state
+                stopEl.classList.remove('is-next', 'is-arrived', 'is-upcoming');
+                stopEl.querySelector('.eta-details')?.classList.add('hidden');
+                stopEl.querySelector('.arrival-label')?.classList.add('hidden');
+                stopEl.querySelector('.delay-label')?.classList.add('hidden');
+                stopEl.querySelector('.stop-dot .stop-number')?.classList.remove('hidden');
+                stopEl.querySelector('.stop-dot .fa-check')?.classList.add('hidden');
+
+                if (distanceToBus < ARRIVAL_THRESHOLD_METERS && !tripState.arrivalTimes.has(stopIndex)) {
+                    tripState.arrivalTimes.set(stopIndex, new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }));
+                    tripState.lastArrivedStopIndex = Math.max(tripState.lastArrivedStopIndex, stopIndex);
+                }
+
+                if (tripState.arrivalTimes.has(stopIndex)) {
+                    // Arrived Stop
+                    stopEl.classList.add('is-arrived');
+                    const arrivalLabel = stopEl.querySelector('.arrival-label');
+                    if (arrivalLabel) {
+                        arrivalLabel.classList.remove('hidden');
+                        arrivalLabel.querySelector('.arrival-time').textContent = tripState.arrivalTimes.get(stopIndex);
+                    }
+                    stopEl.querySelector('.stop-dot .stop-number')?.classList.add('hidden');
+                    stopEl.querySelector('.stop-dot .fa-check')?.classList.remove('hidden');
+                } else {
+                    // Upcoming Stop
+                    stopEl.classList.add('is-upcoming');
+
+                    const segmentDistanceKm = lastLegStartPoint.distanceTo(stopLatLng) / 1000;
+                    cumulativeTimeMinutes += (segmentDistanceKm / speedForEta) * 60;
+
+                    const etaTime = new Date(Date.now() + cumulativeTimeMinutes * 60000);
+                    const formattedEta = etaTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true });
+
+                    const etaDetails = stopEl.querySelector('.eta-details');
+                    if (etaDetails) {
+                        etaDetails.querySelector('.distance-value').textContent = `${(distanceToBus / 1000).toFixed(1)} km`;
+                        etaDetails.querySelector('.eta-time').textContent = formattedEta;
+                        etaDetails.classList.remove('hidden');
+                    }
+
+                    // Delay/Early calculation
+                    const scheduledTimeStr = stopEl.dataset.scheduledTime;
+                    const scheduledDate = parseTimeToDate(scheduledTimeStr);
+                    const delayLabel = stopEl.querySelector('.delay-label');
+
+                    if (scheduledDate && delayLabel) {
+                        const delayMinutes = Math.round((etaTime - scheduledDate) / 60000);
+                        const statusSpan = delayLabel.querySelector('.delay-status');
+                        if (Math.abs(delayMinutes) <= 2) {
+                            statusSpan.textContent = "On Time";
+                            statusSpan.className = 'delay-status font-bold text-green-600';
+                        } else if (delayMinutes > 2) {
+                            statusSpan.textContent = `Delayed by ${formatRelativeTime(delayMinutes)}`;
+                            statusSpan.className = 'delay-status font-bold text-red-600';
+                        } else {
+                            statusSpan.textContent = `Early by ${formatRelativeTime(-delayMinutes)}`;
+                            statusSpan.className = 'delay-status font-bold text-yellow-600';
+                        }
+                        delayLabel.classList.remove('hidden');
+                    }
+
+                    if (!nextStopFound) {
+                        nextStopFound = true;
+                        nextStopElForProgress = stopEl;
+                        stopEl.classList.add('is-next');
+
+                        if (arrivedCount < busData.stops.length) {
+                            if (dom.summaryNextStop) dom.summaryNextStop.textContent = stopEl.querySelector('.stop-name').textContent;
+                            if (dom.summaryEta) dom.summaryEta.textContent = formattedEta;
+                        }
+
+                        // Smooth scroll once per change
+                        if (tripState.currentNextStopIndex !== stopIndex && stopEl.offsetParent) {
+                            stopEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            tripState.currentNextStopIndex = stopIndex;
+                        }
+                    }
+
+                    lastLegStartPoint = stopLatLng;
+                }
+            });
+
+            // Progress connector between previous arrived and next stop
+            if (nextStopElForProgress && tripState.lastArrivedStopIndex > -1) {
+                const prevStopEl = container.querySelector(`[data-stop-index="${tripState.lastArrivedStopIndex}"]`);
+                if (prevStopEl) {
+                    const prevStopLatLng = L.latLng(parseFloat(prevStopEl.dataset.stopLat), parseFloat(prevStopEl.dataset.stopLng));
+                    const nextStopLatLng = L.latLng(parseFloat(nextStopElForProgress.dataset.stopLat), parseFloat(nextStopElForProgress.dataset.stopLng));
+                    const totalDist = prevStopLatLng.distanceTo(nextStopLatLng);
+                    const coveredDist = prevStopLatLng.distanceTo(tripState.lastLocation.latlng);
+                    const progressPercent = Math.max(0, Math.min(100, totalDist > 0 ? (coveredDist / totalDist) * 100 : 0));
+                    const progressConnector = prevStopEl.querySelector('.stop-connector-progress');
+                    if (progressConnector) progressConnector.style.height = `${progressPercent}%`;
+                }
+            }
+        });
+    }
+
+    function updateProgressLine() {
+        if (!traveledRoutePolyline || !tripState.fullRouteCoords || !tripState.lastLocation) return;
+        const closest = findClosestPointOnPolyline(tripState.lastLocation.latlng, tripState.fullRouteCoords);
+        if (!closest.point) return;
+        const progressCoords = tripState.fullRouteCoords.slice(0, closest.index + 1);
+        progressCoords.push([closest.point.lat, closest.point.lng]);
+        traveledRoutePolyline.setLatLngs(progressCoords);
+    }
+
+    function setSummarySpeed(kmh) {
+        tripState.currentSpeedKmh = Math.max(0, kmh || 0);
+        if (dom.summarySpeed) dom.summarySpeed.textContent = `${Math.round(tripState.currentSpeedKmh)} km/h`;
+    }
+
+    // Main location update handler
+    function processLocationUpdate(coords) {
+        if (!coords || typeof coords.lat !== 'number' || typeof coords.lng !== 'number') return;
+
+        const endLatLng = L.latLng(coords.lat, coords.lng);
+        let currentSpeed = 0, bearing = tripState.lastLocation?.bearing || 0;
+
+        if (tripState.lastLocation) {
+            const dist = endLatLng.distanceTo(tripState.lastLocation.latlng);
+            const time = (Date.now() - tripState.lastLocation.timestamp) / 1000;
+
+            if (time > MIN_VALID_TIME_SEC && dist > MIN_VALID_MOVE_METERS) {
+                currentSpeed = (dist / time) * 3.6; // m/s to km/h
+                bearing = calculateBearing(tripState.lastLocation.latlng, endLatLng);
+
+                // Outlier guard: filter unrealistic spikes (>120 km/h)
+                if (currentSpeed < 120) {
+                    tripState.recentSpeeds.push(currentSpeed);
+                    if (tripState.recentSpeeds.length > ROLLING_AVERAGE_SAMPLES) tripState.recentSpeeds.shift();
+                }
+            } else {
+                // Essentially stationary
+                currentSpeed = 0;
+            }
+        }
+
+        if (!busMarker) {
+            busMarker = L.marker(endLatLng, { icon: busIcon, zIndexOffset: 1000 }).addTo(map);
+        } else {
+            busMarker.setLatLng(endLatLng);
+        }
+
+        rotateBusMarker(bearing);
+
+        tripState.lastLocation = { latlng: endLatLng, timestamp: Date.now(), bearing };
+        tripState.lastUpdateTs = Date.now();
+        setSummarySpeed(currentSpeed);
+        updateStatusUI('live');
+
+        if (tripState.isCentering) map.panTo(endLatLng, { animate: true });
+
+        updateStopListUI();
+        updateProgressLine();
+
+        // refresh stale timer
+        scheduleStaleCheck();
+    }
+
+    // --- EVENT LISTENERS ---
+    dom.recenterBtn?.addEventListener('click', () => {
+        if (busMarker) map.flyTo(busMarker.getLatLng(), Math.max(map.getZoom(), 16), { animate: true });
+        tripState.isCentering = true;
+    });
+
+    map.on('dragstart', () => { tripState.isCentering = false; });
+
+    dom.toggleStopsBtn?.addEventListener('click', () => dom.mobileStopSheet?.classList.toggle('translate-y-full'));
+    dom.closeStopsBtn?.addEventListener('click', () => dom.mobileStopSheet?.classList.toggle('translate-y-full'));
+    dom.darkModeBtn?.addEventListener('click', toggleTheme);
+    dom.fullscreenBtn?.addEventListener('click', () => { if (map.toggleFullscreen) map.toggleFullscreen(); });
+
+    dom.stopListContainers.forEach(container => {
+        container.addEventListener('click', (e) => {
+            const stopItem = e.target.closest('.stop-item');
+            if (stopItem) {
+                const lat = parseFloat(stopItem.dataset.stopLat);
+                const lng = parseFloat(stopItem.dataset.stopLng);
+                map.panTo([lat, lng], { animate: true });
+                tripState.isCentering = false;
+            }
+        });
+    });
+
+    // --- SOCKET.IO & INITIALIZATION ---
+    const socket = io();
+
+    socket.on('connect', () => {
+        // rejoin on reconnect too
+        socket.emit('joinBusRoom', tripState.busId);
+    });
+
+    socket.on('disconnect', () => {
+        updateStatusUI('offline');
+        clearTimeout(timers.staleTimeoutId);
+    });
+
+    socket.on('locationUpdate', (newCoords) => {
+        processLocationUpdate(newCoords);
+    });
+
+    socket.on('trackingStopped', () => {
+        updateStatusUI('offline');
+    });
+
+    // Periodic UI refresh to keep ETA/delay responsive even when stationary
+    timers.uiIntervalId = setInterval(() => {
+        if (!tripState.lastLocation) return;
+
+        // If we are stale by now, ensure speed shows 0
+        if (Date.now() - tripState.lastUpdateTs >= LOCATION_STALE_MS) {
+            setSummarySpeed(0);
+            updateStatusUI(tripState.liveState === 'offline' ? 'offline' : 'stale');
+        }
+
+        updateStopListUI();
+        updateProgressLine();
+    }, UI_REFRESH_MS);
+
+    // Init
+    const preferredTheme = localStorage.getItem('theme') || 'light';
+    applyTheme(preferredTheme);
+    generateStopList();
+    initializeRoute();
+
+    // Initial status
+    if (busData.trackingStarted && busData.currentLocation?.lat) {
+        processLocationUpdate(busData.currentLocation);
+    } else {
+        updateStatusUI(busData.trackingStarted ? 'stale' : 'offline');
+    }
+});
+</script>
+    <!-- <script>
+    document.addEventListener('DOMContentLoaded', () => {
+    if (typeof busData === 'undefined') return;
+
+    const AVERAGE_BUS_SPEED_KMPH = 25;
+    const ARRIVAL_THRESHOLD_METERS = 15;
+    const ROLLING_AVERAGE_SAMPLES = 5;
+
+    const dom = {
+        statusIndicator: document.getElementById('status-indicator'),
+        statusDot: document.getElementById('status-dot'),
+        statusText: document.getElementById('status-text'),
+        recenterBtn: document.getElementById('recenter-btn'),
+        summaryCard: document.getElementById('summary-card'),
+        summaryNextStop: document.getElementById('summary-next-stop'),
+        summaryEta: document.getElementById('summary-eta'),
+        summarySpeed: document.getElementById('summary-speed'),
+        summaryProgress: document.getElementById('summary-progress'),
+        stopListContainers: document.querySelectorAll('.stop-list-container'),
+        toggleStopsBtn: document.getElementById('toggle-stops-btn'),
+        mobileStopSheet: document.getElementById('mobile-stop-sheet'),
+        closeStopsBtn: document.getElementById('close-stops-btn'),
+        darkModeBtn: document.getElementById('dark-mode-btn'),
+        darkModeIcon: document.getElementById('dark-mode-icon'),
+        fullscreenBtn: document.getElementById('fullscreen-btn'),
+        routeSummaryContainers: document.querySelectorAll('.route-summary'),
+    };
+
+    const tripState = {
+        busId: busData._id, arrivalTimes: new Map(), lastLocation: null,
+        recentSpeeds: [], isCentering: true, lastArrivedStopIndex: -1,
+        fullRouteCoords: null, currentNextStopIndex: -1, 
+    };
+    
+    const initialLat = busData.currentLocation?.lat || busData.stops[0]?.lat || 19.3149;
+    const initialLng = busData.currentLocation?.lng || busData.stops[0]?.lng || 84.7941;
+    const map = L.map('map', { fullscreenControl: false, zoomControl: false }).setView([initialLat, initialLng], 14);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    const tileLayers = {
+        light: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }),
+        dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; CartoDB' })
+    };
+
+    const busIcon = L.divIcon({ html: `<img src="/bus-school.png" class="bus-icon-rotated" style="width:40px; height:40px;">`, className: '', iconSize: [40, 40], iconAnchor: [20, 20] });
+    let busMarker = null;
+    let fullRoutePolyline = null;
+    let traveledRoutePolyline = null;
+    
+    // --- THEME MANAGEMENT ---
+    const applyTheme = (theme) => {
+        if (theme === 'dark') {
+            document.body.classList.add('dark-mode');
+            dom.darkModeIcon.classList.replace('fa-moon', 'fa-sun');
+            map.removeLayer(tileLayers.light);
+            tileLayers.dark.addTo(map);
+        } else {
+            document.body.classList.remove('dark-mode');
+            dom.darkModeIcon.classList.replace('fa-sun', 'fa-moon');
+            map.removeLayer(tileLayers.dark);
+            tileLayers.light.addTo(map);
+        }
+    };
+    const toggleTheme = () => {
+        const currentTheme = document.body.classList.contains('dark-mode') ? 'dark' : 'light';
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        localStorage.setItem('theme', newTheme);
+        applyTheme(newTheme);
+    };
+    
+    // --- STOP LIST & ROUTE ---
+    function generateStopList() {
+        if (!busData.stops || busData.stops.length === 0) return;
+        const stopHtml = busData.stops.map((stop, index) => {
+            const isLast = index === busData.stops.length - 1;
+            return `
+                <div class="stop-item" data-stop-index="${index}" data-stop-lat="${stop.lat}" data-stop-lng="${stop.lng}">
+                    ${!isLast ? '<div class="stop-connector"></div><div class="stop-connector-progress"></div>' : ''}
+                    <div class="stop-dot"><i class="fas fa-check text-base hidden"></i><span class="stop-number">${index + 1}</span></div>
+                    <div class="ml-4">
+                        <p class="font-bold text-primary stop-name">${stop.name}</p>
+                        <p class="text-xs text-subtle">Scheduled: ${formatTime(stop.scheduledTime)}</p>
+                        <div class="arrival-label text-sm text-green-600 font-semibold mt-1 hidden">Arrived: <span class="arrival-time"></span></div>
+                        <div class="eta-details text-sm text-secondary mt-1 hidden">
+                            <span class="eta-label font-bold text-blue-600">Expected: <span class="eta-time"></span></span>
+                            (<span class="distance-value"></span> away)
+                        </div>
+                    </div>
+                </div>`;
+        }).join('');
+        dom.stopListContainers.forEach(container => container.innerHTML = stopHtml);
+    }   
+
+    async function initializeRoute() {
+        if (!busData.stops || busData.stops.length < 2) return;
+        busData.stops.forEach((stop, i) => {
+            const isFirst = i === 0, isLast = i === busData.stops.length - 1;
+            const iconHtml = isFirst ? `<div class="map-marker-icon w-8 h-8 bg-green-500"><i class="fas fa-play text-sm"></i></div>`
+                : isLast ? `<div class="map-marker-icon w-8 h-8 bg-gray-800"><i class="fas fa-flag-checkered text-sm"></i></div>`
+                : `<div class="map-marker-icon w-7 h-7 bg-gray-500 text-xs">${i + 1}</div>`;
+            L.marker([stop.lat, stop.lng], { icon: L.divIcon({ html: iconHtml, className: '' }), zIndexOffset: 500 })
+             .addTo(map).bindTooltip(stop.name, { permanent: false, direction: 'top' });
+        });
+        const coordsString = busData.stops.map(stop => `${stop.lng},${stop.lat}`).join(';');
+        const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson&summary=true`;
+        try {
+            const response = await fetch(osrmUrl);
+            const routeData = await response.json();
+            if (routeData.routes && routeData.routes.length > 0) {
+                const route = routeData.routes[0];
+                tripState.fullRouteCoords = route.geometry.coordinates.map(p => [p[1], p[0]]);
+                fullRoutePolyline = L.polyline(tripState.fullRouteCoords, { color: '#a0aec0', weight: 6, opacity: 0.8, dashArray: '8, 8' }).addTo(map);
+                traveledRoutePolyline = L.polyline([], { color: '#3b82f6', weight: 8 }).addTo(map);
+                map.fitBounds(fullRoutePolyline.getBounds(), { padding: [50, 50] });
+
+                // NEW: Populate Total Route Summary
+                const totalKm = (route.distance / 1000).toFixed(1);
+                const totalMinutes = Math.round(route.duration / 60);
+                dom.routeSummaryContainers.forEach(el => {
+                    el.innerHTML = `<span><i class="fas fa-road"></i> ${totalKm} km</span> &bull; <span><i class="fas fa-clock"></i> ${totalMinutes} min trip</span>`;
+                });
+            }
+        } catch (error) { console.error("Could not fetch OSRM route:", error); }
+    }
+    
+    // --- UTILITIES ---
+    const formatTime = (time) => {
+        if (!time) return 'N/A';
+        const [h, m] = time.split(':'); const hours = parseInt(h, 10);
+        return `${hours % 12 || 12}:${m} ${hours >= 12 ? 'PM' : 'AM'}`;
+    };
+    const calculateBearing = (start, end) => {
+        const toRad = deg => deg * Math.PI / 180, toDeg = rad => rad * 180 / Math.PI;
+        const y = Math.sin(toRad(end.lng - start.lng)) * Math.cos(toRad(end.lat));
+        const x = Math.cos(toRad(start.lat)) * Math.sin(toRad(end.lat)) - Math.sin(toRad(start.lat)) * Math.cos(toRad(end.lat)) * Math.cos(toRad(end.lng - start.lng));
+        return (toDeg(Math.atan2(y, x)) + 360) % 360;
+    };
+    function findClosestPointOnPolyline(busLatLng, polylineCoords) {
+        let closest = { point: null, distance: Infinity, index: -1 };
+        if (!polylineCoords) return closest;
+        for (let i = 0; i < polylineCoords.length - 1; i++) {
+            const p1 = L.latLng(polylineCoords[i]), p2 = L.latLng(polylineCoords[i + 1]);
+            const p = L.LineUtil.closestPointOnSegment(busLatLng, p1, p2);
+            const d = busLatLng.distanceTo(p);
+            if (d < closest.distance) { closest = { point: p, distance: d, index: i }; }
+        }
+        return closest;
+    }
+
+    // --- MAIN UI UPDATE LOGIC ---
+    function updateStatusUI(isLive) {
+        dom.statusText.textContent = isLive ? 'LIVE' : 'OFFLINE';
+        dom.statusIndicator.classList.toggle('bg-green-100/80', isLive); dom.statusIndicator.classList.toggle('text-green-600', isLive);
+        dom.statusDot.classList.toggle('bg-green-500', isLive); dom.statusIndicator.classList.toggle('is-live', isLive);
+        dom.statusIndicator.classList.toggle('bg-red-100/80', !isLive); dom.statusIndicator.classList.toggle('text-red-600', !isLive);
+        dom.statusDot.classList.toggle('bg-red-500', !isLive); dom.recenterBtn.classList.toggle('hidden', !isLive);
+        dom.summaryCard.classList.toggle('hidden', !isLive);
+        if (!isLive && busMarker) { map.removeLayer(busMarker); busMarker = null; tripState.lastLocation = null; }
+    }
+    
+    function updateStopListUI() {
+        const avgSpeed = tripState.recentSpeeds.length > 0 ? tripState.recentSpeeds.reduce((a, b) => a + b, 0) / tripState.recentSpeeds.length : AVERAGE_BUS_SPEED_KMPH;
+        const speedForEta = avgSpeed > 5 ? avgSpeed : AVERAGE_BUS_SPEED_KMPH;
+        const arrivedCount = tripState.arrivalTimes.size;
+        
+        if (arrivedCount === busData.stops.length) {
+            dom.summaryNextStop.textContent = `Trip Completed`;
+            dom.summaryEta.textContent = '✔';
+            dom.summaryProgress.textContent = `${busData.stops.length}/${busData.stops.length}`;
+        } else {
+            dom.summaryProgress.textContent = `${Math.min(arrivedCount + 1, busData.stops.length)}/${busData.stops.length}`;
+        }
+
+        dom.stopListContainers.forEach(container => {
+            const stopElements = container.querySelectorAll('.stop-item');
+            if (stopElements.length === 0) return;
+            let nextStopFound = false, cumulativeTimeMinutes = 0, lastLegStartPoint = tripState.lastLocation.latlng, nextStopElForProgress = null;
+
+            stopElements.forEach(stopEl => {
+                const stopIndex = parseInt(stopEl.dataset.stopIndex);
+                const stopLatLng = L.latLng(parseFloat(stopEl.dataset.stopLat), parseFloat(stopEl.dataset.stopLng));
+                const distanceToBus = tripState.lastLocation.latlng.distanceTo(stopLatLng);
+                
+                // Reset UI state for this element
+                stopEl.classList.remove('is-next', 'is-arrived', 'is-upcoming');
+                stopEl.querySelector('.eta-details').classList.add('hidden');
+                stopEl.querySelector('.arrival-label').classList.add('hidden');
+                stopEl.querySelector('.stop-dot .stop-number').classList.remove('hidden');
+                stopEl.querySelector('.stop-dot .fa-check').classList.add('hidden');
+
+                if (distanceToBus < ARRIVAL_THRESHOLD_METERS && !tripState.arrivalTimes.has(stopIndex)) {
+                    tripState.arrivalTimes.set(stopIndex, new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }));
+                    tripState.lastArrivedStopIndex = Math.max(tripState.lastArrivedStopIndex, stopIndex);
+                }
+
+                if (tripState.arrivalTimes.has(stopIndex)) { // Arrived Stop
+                    stopEl.classList.add('is-arrived');
+                    const arrivalLabel = stopEl.querySelector('.arrival-label');
+                    arrivalLabel.classList.remove('hidden');
+                    arrivalLabel.querySelector('.arrival-time').textContent = tripState.arrivalTimes.get(stopIndex);
+                    stopEl.querySelector('.stop-dot .stop-number').classList.add('hidden');
+                    stopEl.querySelector('.stop-dot .fa-check').classList.remove('hidden');
+                } else { // Upcoming Stop
+                    stopEl.classList.add('is-upcoming');
+                    const segmentDistanceKm = lastLegStartPoint.distanceTo(stopLatLng) / 1000;
+                    cumulativeTimeMinutes += (segmentDistanceKm / speedForEta) * 60;
+                    const etaTime = new Date(Date.now() + cumulativeTimeMinutes * 60000);
+                    const formattedEta = etaTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true });
+                    const etaDetails = stopEl.querySelector('.eta-details');
+                    etaDetails.querySelector('.distance-value').textContent = `${(distanceToBus / 1000).toFixed(1)} km`;
+                    etaDetails.querySelector('.eta-time').textContent = formattedEta;
+                    etaDetails.classList.remove('hidden');
+
+                    if (!nextStopFound) {
+                        nextStopFound = true; nextStopElForProgress = stopEl; stopEl.classList.add('is-next');
+                        if (arrivedCount < busData.stops.length) {
+                            dom.summaryNextStop.textContent = stopEl.querySelector('.stop-name').textContent;
+                            dom.summaryEta.textContent = formattedEta;
+                        }
+                        if (tripState.currentNextStopIndex !== stopIndex && stopEl.offsetParent) {
+                            stopEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            tripState.currentNextStopIndex = stopIndex;
+                        }
+                    }
+                    lastLegStartPoint = stopLatLng;
+                }
+            });
+
+            if (nextStopElForProgress && tripState.lastArrivedStopIndex > -1) {
+                const prevStopEl = container.querySelector(`[data-stop-index="${tripState.lastArrivedStopIndex}"]`);
+                if(prevStopEl){
+                    const prevStopLatLng = L.latLng(parseFloat(prevStopEl.dataset.stopLat), parseFloat(prevStopEl.dataset.stopLng));
+                    const nextStopLatLng = L.latLng(parseFloat(nextStopElForProgress.dataset.stopLat), parseFloat(nextStopElForProgress.dataset.stopLng));
+                    const totalDist = prevStopLatLng.distanceTo(nextStopLatLng);
+                    const coveredDist = prevStopLatLng.distanceTo(tripState.lastLocation.latlng);
+                    const progressPercent = Math.max(0, Math.min(100, totalDist > 0 ? (coveredDist / totalDist) * 100 : 0));
+                    const progressConnector = prevStopEl.querySelector('.stop-connector-progress');
+                    if (progressConnector) progressConnector.style.height = `${progressPercent}%`;
+                }
+            }
+        });
+    }
+
+    function updateProgressLine() {
+        if (!traveledRoutePolyline || !tripState.fullRouteCoords) return;
+        const closest = findClosestPointOnPolyline(tripState.lastLocation.latlng, tripState.fullRouteCoords);
+        if (!closest.point) return;
+        const progressCoords = tripState.fullRouteCoords.slice(0, closest.index + 1);
+        progressCoords.push([closest.point.lat, closest.point.lng]);
+        traveledRoutePolyline.setLatLngs(progressCoords);
+    }
+
+    function processLocationUpdate(coords) {
+        const endLatLng = L.latLng(coords.lat, coords.lng);
+        let currentSpeed = 0, bearing = tripState.lastLocation?.bearing || 0;
+        if (tripState.lastLocation) {
+            const dist = endLatLng.distanceTo(tripState.lastLocation.latlng);
+            const time = (Date.now() - tripState.lastLocation.timestamp) / 1000;
+            if (time > 0.1 && dist > 1) {
+                currentSpeed = (dist / time) * 3.6;
+                bearing = calculateBearing(tripState.lastLocation.latlng, endLatLng);
+                tripState.recentSpeeds.push(currentSpeed);
+                if (tripState.recentSpeeds.length > ROLLING_AVERAGE_SAMPLES) tripState.recentSpeeds.shift();
+            }
+        }
+        if (!busMarker) { busMarker = L.marker(endLatLng, { icon: busIcon, zIndexOffset: 1000 }).addTo(map); } 
+        else { busMarker.setLatLng(endLatLng); }
+        busMarker.getElement().querySelector('.bus-icon-rotated').style.transform = `rotate(${bearing}deg)`;
+        tripState.lastLocation = { latlng: endLatLng, timestamp: Date.now(), bearing };
+        if (tripState.isCentering) map.panTo(endLatLng, { animate: true, duration: 1 });
+        dom.summarySpeed.textContent = `${currentSpeed.toFixed(0)} km/h`;
+        updateStopListUI();
+        updateProgressLine();
+    }
+    
+    // --- EVENT LISTENERS ---
+    dom.recenterBtn.addEventListener('click', () => { if (busMarker) map.setView(busMarker.getLatLng(), 16, { animate: true, duration: 1 }); tripState.isCentering = true; });
+    map.on('dragstart', () => tripState.isCentering = false);
+    dom.toggleStopsBtn.addEventListener('click', () => dom.mobileStopSheet.classList.toggle('translate-y-full'));
+    dom.closeStopsBtn.addEventListener('click', () => dom.mobileStopSheet.classList.toggle('translate-y-full'));
+    dom.darkModeBtn.addEventListener('click', toggleTheme);
+    dom.fullscreenBtn.addEventListener('click', () => map.toggleFullscreen());
+    dom.stopListContainers.forEach(container => {
+        container.addEventListener('click', (e) => {
+            const stopItem = e.target.closest('.stop-item');
+            if (stopItem) {
+                const lat = parseFloat(stopItem.dataset.stopLat);
+                const lng = parseFloat(stopItem.dataset.stopLng);
+                map.panTo([lat, lng], { animate: true, duration: 0.5 });
+                tripState.isCentering = false;
+            }
+        });
+    });
+
+    // --- SOCKET.IO & INITIALIZATION ---
+    const socket = io();
+    socket.emit('joinBusRoom', tripState.busId);
+    socket.on('locationUpdate', (newCoords) => { updateStatusUI(true); processLocationUpdate(newCoords); });
+    socket.on('trackingStopped', () => updateStatusUI(false));
+
+    const preferredTheme = localStorage.getItem('theme') || 'light';
+    applyTheme(preferredTheme);
+    generateStopList();
+    initializeRoute();
+    updateStatusUI(busData.trackingStarted);
+    if (busData.trackingStarted && busData.currentLocation?.lat) {
+        processLocationUpdate(busData.currentLocation);
+    }
+});
+
+    </script> -->
+</body>
+</html>

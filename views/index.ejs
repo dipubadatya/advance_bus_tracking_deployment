@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BusGo - Live Transit Companion</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+    rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Plus Jakarta Sans', 'sans-serif'] },
+          colors: {
+            brand: {
+              50: '#ecfeff',
+              100: '#cffafe',
+              200: '#a5f3fc',
+              300: '#67e8f9',
+              400: '#22d3ee',
+              500: '#06b6d4',
+              600: '#0891b2',
+              700: '#0e7490',
+              800: '#155e75',
+              900: '#164e63'
+            },
+            accent: '#22c55e',
+            ink: '#0b1220'
+          },
+          boxShadow: {
+            soft: '0 8px 30px rgba(2, 8, 23, 0.08)'
+          },
+          keyframes: {
+            float: {
+              '0%,100%': { transform: 'translateY(0)' },
+              '50%': { transform: 'translateY(-4px)' }
+            },
+            pulseDot: {
+              '0%': { boxShadow: '0 0 0 0 rgba(34,197,94,0.5)' },
+              '70%': { boxShadow: '0 0 0 10px rgba(34,197,94,0)' },
+              '100%': { boxShadow: '0 0 0 0 rgba(34,197,94,0)' }
+            }
+          },
+          animation: {
+            float: 'float 6s ease-in-out infinite',
+            pulseDot: 'pulseDot 2s infinite'
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    :root {
+      --glass: rgba(255, 255, 255, 0.6);
+      --glass-dark: rgba(17, 24, 39, 0.6);
+    }
+
+    .glass {
+      background: var(--glass);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+
+    .dark .glass {
+      background: var(--glass-dark);
+    }
+
+    .live-dot {
+      animation: pulseDot 2s infinite;
+    }
+
+    .shimmer {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .shimmer::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -150px;
+      width: 100px;
+      height: 100%;
+      background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, .4), rgba(255, 255, 255, 0));
+      animation: shimmer 1.6s infinite;
+    }
+
+    @keyframes shimmer {
+      0% {
+        left: -150px;
+      }
+
+      100% {
+        left: 100%;
+      }
+    }
+  </style>
+</head>
+
+<body class="bg-slate-50 text-slate-900 dark:bg-ink dark:text-slate-100 min-h-screen transition-colors">
+
+  <!-- Header -->
+  <header
+    class="sticky top-0 z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur border-b border-slate-200/70 dark:border-slate-800">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6">
+      <div class="h-16 flex items-center justify-between">
+        <div class="flex items-center">
+          <div class="relative mr-3">
+            <i class="fa-solid fa-bus text-brand-700 dark:text-brand-300 text-2xl"></i>
+            <span class="absolute -top-1 -right-1 inline-flex h-3 w-3">
+              <span class="absolute h-full w-full rounded-full bg-accent/70 animate-ping"></span>
+              <span class="relative rounded-full h-3 w-3 bg-accent"></span>
+            </span>
+          </div>
+          <a href="/" class="text-lg sm:text-xl font-bold tracking-tight">BusGo</a>
+        </div>
+
+        <nav class="flex items-center gap-2">
+          <a href="/dashboard"
+            class=" sm:inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-brand-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-800">
+            <i class="fa-solid fa-th-large"></i>
+            Dashboard
+          </a>
+          <button id="dark-toggle"
+            class="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium text-slate-700 hover:text-brand-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:text-white dark:hover:bg-slate-800"
+            title="Toggle dark mode">
+            <i class="fa-solid fa-moon"></i>
+            <span class="hidden sm:inline">Theme</span>
+          </button>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <section class="relative overflow-hidden">
+    <div class="absolute inset-0 bg-gradient-to-br from-brand-600 via-brand-700 to-slate-900"></div>
+    <div class="absolute inset-0 opacity-20 dark:opacity-30"
+      style="background-image: radial-gradient(circle at 20% 20%, rgba(255,255,255,.15), transparent 25%), radial-gradient(circle at 80% 30%, rgba(255,255,255,.15), transparent 25%), radial-gradient(circle at 40% 80%, rgba(255,255,255,.15), transparent 25%);">
+    </div>
+
+    <div class="relative max-w-7xl mx-auto px-4 sm:px-6 py-10 sm:py-16 text-white">
+      <div class="grid md:grid-cols-2 gap-8 items-center">
+        <div>
+          <h1 class="text-3xl sm:text-5xl font-extrabold leading-tight">
+            Real‑Time Bus Tracking, Zero Guesswork
+          </h1>
+          <p class="mt-4 text-brand-50/90 text-lg">
+            Find the nearest stop, see live bus status, and get accurate arrival times—fast.
+          </p>
+          <div class="mt-6 flex flex-col sm:flex-row gap-3">
+            <button id="find-stops-btn"
+              class="inline-flex items-center justify-center gap-2 bg-white text-brand-800 hover:bg-brand-50 font-semibold px-5 py-3 rounded-xl shadow-soft transition transform hover:-translate-y-0.5">
+              <i class="fa-solid fa-location-crosshairs"></i>
+              Find Nearest Stop
+            </button>
+            <a href="/bus-list"
+              class="inline-flex items-center justify-center gap-2  border border-white font-semibold px-5 py-3 rounded-xl shadow-soft transition transform hover:-translate-y-0.5">
+              <i class="fa-solid fa-calendar-alt"></i>
+              View Schedules
+            </a>
+          </div>
+
+          <div class="mt-6 bg-white/10 border border-white/20 rounded-xl p-4 sm:p-5 max-w-lg backdrop-blur">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <div class="text-xs uppercase tracking-wide text-brand-50/80 mb-1">Nearest Stop</div>
+                <div id="nearest-stop-name" class="text-lg font-semibold">—</div>
+              </div>
+              <div>
+                <div class="text-xs uppercase tracking-wide text-brand-50/80 mb-1">Next Bus</div>
+                <div id="next-bus-info" class="text-lg font-semibold">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="hidden md:flex items-end justify-end">
+          <div class="glass rounded-2xl border border-white/20 p-5 w-full max-w-md shadow-soft">
+
+            <div class="mt-4 grid grid-cols-3 gap-3 text-sm">
+              <div class="glass rounded-lg p-3 text-center border border-white/10">
+                <div class="text-2xl font-bold text-black dark:text-white">
+                  <%= buses.length %>
+                </div>
+                <div class="text-slate-500 dark:text-slate-400">Routes</div>
+              </div>
+              <div class="glass rounded-lg p-3 text-center border border-white/10">
+                <div id="active-buses-count" class="text-2xl font-bold text-emerald-500">
+                  <%= buses.filter(bus=> bus.trackingStarted).length %>
+                </div>
+                <div class="text-slate-500 dark:text-slate-400">Active</div>
+              </div>
+              <div class="glass rounded-lg p-3 text-center border border-white/10">
+                <div class="text-2xl font-bold text-black dark:text-white">5m</div>
+                <div class="text-slate-500 dark:text-slate-400">Avg Wait</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Toolbar -->
+  <section class="max-w-7xl mx-auto px-4 sm:px-6 -mt-8 relative z-10">
+    <div
+      class="bg-white dark:bg-slate-900 rounded-2xl shadow-soft border border-slate-200/70 dark:border-slate-800 p-4 sm:p-5">
+      <div class="flex flex-col lg:flex-row items-stretch gap-3">
+        <div class="flex-1">
+          <label class="sr-only" for="route-search">Search routes</label>
+          <div class="relative">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+            <input id="route-search" type="text" placeholder="Search by route name, bus number, or stop…"
+              class="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500/50" />
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <label
+            class="inline-flex items-center gap-2 px-3 py-2  rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">
+            <input id="filter-active" type="checkbox" class="accent-brand-600 w-4 h-4" />
+            <span class="text-sm">Active only</span>
+          </label>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stats (mobile view) -->
+  <section class="max-w-7xl mx-auto px-4 sm:px-6 mt-4 md:hidden">
+    <div class="grid grid-cols-3 gap-3">
+      <div class="bg-white dark:bg-slate-900 rounded-xl p-3 text-center border border-slate-200 dark:border-slate-800">
+        <div class="text-xl font-bold">
+          <%= buses.length %>
+        </div>
+        <div class="text-xs text-slate-500 dark:text-slate-400">Routes</div>
+      </div>
+      <div class="bg-white dark:bg-slate-900 rounded-xl p-3 text-center border border-slate-200 dark:border-slate-800">
+        <div id="active-buses-count-mobile" class="text-xl font-bold text-emerald-600 dark:text-emerald-400">
+          <%= buses.filter(bus=> bus.trackingStarted).length %>
+        </div>
+        <div class="text-xs text-slate-500 dark:text-slate-400">Active</div>
+      </div>
+      <div class="bg-white dark:bg-slate-900 rounded-xl p-3 text-center border border-slate-200 dark:border-slate-800">
+        <div class="text-xl font-bold">98%</div>
+        <div class="text-xs text-slate-500 dark:text-slate-400">On‑Time</div>
+      </div>
+    </div>
+  </section>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 mt-6 mb-16">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-semibold">Available Routes</h2>
+      <span class="text-sm text-slate-500 dark:text-slate-400">
+        Showing <span id="visible-count">
+          <%= buses.length %>
+        </span> of <%= buses.length %>
+      </span>
+    </div>
+
+    <% if (buses && buses.length> 0) { %>
+      <div id="routes-grid" class="space-y-4">
+        <% buses.forEach(bus=> { %>
+          <% const isTracking=bus.trackingStarted; const startObj=(bus.stops && bus.stops[0]) || {}; const
+            endObj=(bus.stops && bus.stops[bus.stops.length - 1]) || {}; const startStop=startObj.name || 'N/A' ; const
+            endStop=endObj.name || 'N/A' ; // Try common time keys; adjust if your data uses different keys const
+            startTimeRaw=startObj.scheduledTime || startObj.time || startObj.departureTime || startObj.arrivalTime || ''
+            ; const endTimeRaw=endObj.scheduledTime || endObj.time || endObj.arrivalTime || endObj.departureTime || '' ;
+            function formatTime(t) { if (!t) return '' ; try { const d=new Date(t); if (!isNaN(d)) return
+            d.toLocaleTimeString([], { hour: '2-digit' , minute: '2-digit' }); } catch (e) {} return String(t); } const
+            startTime=formatTime(startTimeRaw); const endTime=formatTime(endTimeRaw); const buttonState=isTracking ? {
+            text: 'Track Bus' , icon: 'fa-route' , classes: 'bg-brand-600 text-white hover:bg-brand-700' } : {
+            text: 'Not Active' , icon: 'fa-ban' ,
+            classes: 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed' }; const
+            searchIndex=(bus.busNumber + ' ' + (bus.routeName || '' ) + ' ' + startStop + ' ' + endStop).toLowerCase();
+            %>
+
+            <div
+              class="route-card bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 p-4 sm:p-5"
+              data-bus-id="<%= bus._id %>" data-active="<%= isTracking %>" data-search-index="<%= searchIndex %>"
+              data-bus-number="<%= bus.busNumber %>" data-route-name="<%= bus.routeName %>">
+
+              <!-- Header (no route name) -->
+              <div class="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-700">
+                <div class="flex items-center gap-3 min-w-0">
+                  <span
+                    class="flex-shrink-0 inline-flex items-center justify-center w-auto h-10 rounded-md font-bold bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-200">
+                    <%= bus.busNumber %>
+                  </span>
+                </div>
+                <div class="min-w-0">
+                  <h3 class="font-semibold text-base sm:text-lg truncate" title="<%= bus.routeName %>">
+                    <%= bus.routeName %>
+                  </h3>
+                </div>
+                <div class="flex-shrink-0 ml-4">
+                  <% if (isTracking) { %>
+                    <div class="inline-flex items-center gap-1.5">
+                      <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                      <span class="text-xs font-medium text-emerald-600 dark:text-emerald-400">Live</span>
+                    </div>
+                    <% } else { %>
+                      <span class="text-xs font-medium text-slate-400 dark:text-slate-500">Offline</span>
+                      <% } %>
+                </div>
+              </div>
+
+              <div class="mt-4 grid grid-cols-1 sm:grid-cols-[1fr,auto] gap-4 sm:gap-6 items-start">
+                <div class="w-full text-sm text-slate-700 dark:text-slate-300 space-y-3">
+                  <!-- From -->
+                  <div class="flex items-start gap-3">
+                    <i class="fa-solid fa-circle-dot text-emerald-600 dark:text-emerald-400 mt-1.5"></i>
+                    <div class="min-w-0 w-full">
+                      <div class="flex items-baseline justify-between gap-2">
+                        <div class="text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500">From</div>
+                        <% if (startTime) { %>
+                          <div class="text-xs text-slate-500 dark:text-slate-400 shrink-0">
+                            <i class="fa-regular fa-clock mr-1"></i>
+                            <%= startTime %>
+                          </div>
+                          <% } %>
+                      </div>
+                      <div class="font-medium whitespace-normal break-words leading-snug">
+                        <%= startStop %>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- To -->
+                  <div class="flex items-start gap-3">
+                    <i class="fa-solid fa-flag-checkered text-slate-400 dark:text-slate-500 mt-1.5"></i>
+                    <div class="min-w-0 w-full">
+                      <div class="flex items-baseline justify-between gap-2">
+                        <div class="text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-500">To</div>
+                        <% if (endTime) { %>
+                          <div class="text-xs text-slate-500 dark:text-slate-400 shrink-0">
+                            <i class="fa-regular fa-clock mr-1"></i>
+                            <%= endTime %>
+                          </div>
+                          <% } %>
+                      </div>
+                      <div class="font-medium whitespace-normal break-words leading-snug">
+                        <%= endStop %>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Action -->
+                <a href="<%= isTracking ? `/track/${bus._id}` : '#' %>"
+                  class="track-button w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition <%= buttonState.classes %>"
+                  <%=isTracking ? '' : 'aria-disabled="true" tabindex="-1"' %>>
+                  <i class="fa-solid <%= buttonState.icon %>"></i>
+                  <span>
+                    <%= buttonState.text %>
+                  </span>
+                </a>
+              </div>
+            </div>
+            <% }) %>
+      </div>
+      <% } else { %>
+        <div
+          class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-12 text-center">
+          <i class="fa-solid fa-bus text-slate-300 dark:text-slate-700 text-6xl mb-4"></i>
+          <h3 class="text-lg font-semibold mb-2">No Routes Available</h3>
+          <p class="text-slate-500 dark:text-slate-400">Bus routes will appear here once drivers add them to the system.
+          </p>
+        </div>
+        <% } %>
+  </main>
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 mt-6 mb-16">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-semibold">Available Routes</h2>
+      <span class="text-sm text-slate-500 dark:text-slate-400">
+        Showing <span id="visible-count">
+          <%= buses.length %>
+        </span> of <%= buses.length %>
+      </span>
+    </div>
+
+    <% if (buses && buses.length> 0) { %>
+      <div id="routes-grid" class="space-y-4">
+        <% buses.forEach(bus=> { %>
+
+            <% const isTracking=bus.trackingStarted; %>
+              <% const startStop=bus.stops[0]?.name || 'N/A' ; %>
+                <% const endStop=bus.stops[bus.stops.length - 1]?.name || 'N/A' ; %>
+                  <% const buttonState=isTracking ? { text: 'Track Bus' , icon: 'fa-route' ,
+                    classes: 'bg-brand-600 text-white hover:bg-brand-700' } : { text: 'Not Active' , icon: 'fa-ban' ,
+                    classes: 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed' };
+                    %>
+                    <% const searchIndex=(bus.busNumber + ' ' + bus.routeName + ' ' + startStop + ' ' +
+                      endStop).toLowerCase(); %>
+
+                      <div
+                        class="route-card bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 p-4"
+                        data-bus-id="<%= bus._id %>" data-active="<%= isTracking %>"
+                        data-search-index="<%= searchIndex %>" data-bus-number="<%= bus.busNumber %>"
+                        data-route-name="<%= bus.routeName %>">
+                        <div
+                          class="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-700">
+                          <div class="flex items-center gap-3 min-w-0">
+                            <span
+                              class="flex-shrink-0 inline-flex items-center justify-center w-auto h-10 rounded-md font-bold bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-200">
+                              <%= bus.busNumber %>
+                            </span>
+                            <div class="min-w-0">
+                              <h3 class="font-semibold text-base sm:text-lg truncate" title="<%= bus.routeName %>">
+                                <%= bus.routeName %>
+                              </h3>
+                            </div>
+                          </div>
+                          <div class="flex-shrink-0 ml-4">
+                            <% if (isTracking) { %>
+                              <div class="live-indicator inline-flex items-center gap-1.5">
+                                <span class="live-dot w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                                <span class="text-xs font-medium text-emerald-600 dark:text-emerald-400">Live</span>
+                              </div>
+                              <% } else { %>
+                                <span class="text-xs font-medium text-slate-400 dark:text-slate-500">Offline</span>
+                                <% } %>
+                          </div>
+                        </div>
+                        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-4 gap-4">
+                          <div class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+                            <i class="fa-solid fa-map-location-dot w-4 text-center text-slate-400"></i>
+                            <span class="font-medium">
+                              <%= startStop %>
+                            </span>
+                            <i class="fa-solid fa-arrow-right-long text-slate-400 mx-1"></i>
+                            <span class="font-medium">
+                              <%= endStop %>
+                            </span>
+                            <span class="ml-2 text-xs text-slate-400">(<%= bus.stops.length %> stops)</span>
+                          </div>
+                          <a href="<%= isTracking ? `/track/${bus._id}` : '#' %>"
+                            class="track-button w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition <%= buttonState.classes %>">
+                            <i class="fa-solid <%= buttonState.icon %>"></i>
+                            <span>
+                              <%= buttonState.text %>
+                            </span>
+                          </a>
+                        </div>
+                      </div>
+                      <% }) %>
+      </div>
+      <% } else { %>
+        <div
+          class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-12 text-center">
+          <i class="fa-solid fa-bus text-slate-300 dark:text-slate-700 text-6xl mb-4"></i>
+          <h3 class="text-lg font-semibold mb-2">No Routes Available</h3>
+          <p class="text-slate-500 dark:text-slate-400">Bus routes will appear here once drivers add them to the system.
+          </p>
+        </div>
+        <% } %>
+          <!-- Help -->
+          <div class="mt-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5">
+            <h3 class="font-semibold mb-3">Need Help?</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <!-- <a href="#"
+                class="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition">
+                <i class="fa-solid fa-map text-brand-600 dark:text-brand-400"></i>
+                <span>View Route Maps</span>
+              </a> -->
+              <a href="/bus-list"
+                class="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition">
+                <i class="fa-solid fa-calendar-alt text-brand-600 dark:text-brand-400"></i>
+                <span>Check Schedules</span>
+              </a>
+              <a href="https://roland.ac.in/contactus.php"
+                class="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition">
+                <i class="fa-solid fa-headset text-brand-600 dark:text-brand-400"></i>
+                <span>Contact Support</span>
+              </a>
+            </div>
+          </div>
+
+  </main>
+
+  <script>
+    const findStopsButton = document.getElementById('find-stops-btn');
+    const nearestStopEl = document.getElementById('nearest-stop-name');
+    const nextBusEl = document.getElementById('next-bus-info');
+
+    // Function to update the UI with API data
+    function updateNearestStopUI(data) {
+      nearestStopEl.textContent = data.stopName;
+
+      nextBusEl.textContent = `Bus #${data.busNumber}`;
+      // nextBusEl.textContent = `Bus #${data.busNumber} (${data.distance_km} km away)`;
+    }
+
+    findStopsButton.addEventListener('click', () => {
+      if (!navigator.geolocation) {
+        alert("Sorry, your browser doesn't support geolocation.");
+        return;
+      }
+
+      const originalButtonText = findStopsButton.innerHTML;
+      findStopsButton.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> Searching...`;
+      findStopsButton.disabled = true;
+
+      // Clear previous results
+      nearestStopEl.textContent = '';
+      nextBusEl.textContent = '';
+
+      navigator.geolocation.getCurrentPosition(async (position) => {
+        const { latitude, longitude } = position.coords;
+
+        try {
+          const response = await fetch('/api/nearest-stop', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ latitude, longitude })
+          });
+
+          const result = await response.json();
+
+          if (!response.ok) {
+
+            throw new Error(result.message || 'Could not fetch stops.');
+          }
+
+          updateNearestStopUI(result.nearest_stop);
+
+        } catch (error) {
+          console.error('Error finding stops:', error);
+
+          
+          nearestStopEl.textContent = error.message;
+          // Clear the bus info text.
+          nextBusEl.textContent = "---";
+
+        } finally {
+          findStopsButton.innerHTML = originalButtonText;
+          findStopsButton.disabled = false;
+        }
+
+      }, (error) => {
+        alert("Unable to retrieve your location. Please enable location services.");
+        findStopsButton.innerHTML = originalButtonText;
+        findStopsButton.disabled = false;
+      });
+    });
+  </script>
+
+  <script>
+    // Dark mode
+    const root = document.documentElement;
+    const darkToggle = document.getElementById('dark-toggle');
+    const storedTheme = localStorage.getItem('theme');
+    if (storedTheme === 'dark' || (!storedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      root.classList.add('dark');
+    }
+    darkToggle.addEventListener('click', () => {
+      root.classList.toggle('dark');
+      localStorage.setItem('theme', root.classList.contains('dark') ? 'dark' : 'light');
+    });
+
+    // // Nearest stop
+    // const findStopsButton = document.getElementById('find-stops-btn');
+    // const nearestStopEl = document.getElementById('nearest-stop-name');
+    // const nextBusEl = document.getElementById('next-bus-info');
+
+    // function updateNearestStopUI(data) {
+    //   nearestStopEl.textContent = data.stopName || 'N/A';
+    //   nextBusEl.textContent = data.busNumber ? `Bus #${data.busNumber}` : '—';
+    // }
+
+    // if (findStopsButton) {
+    //   findStopsButton.addEventListener('click', () => {
+    //     if (!navigator.geolocation) {
+    //       alert("Sorry, your browser doesn't support geolocation.");
+    //       return;
+    //     }
+    //     const original = findStopsButton.innerHTML;
+    //     findStopsButton.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Searching...`;
+    //     findStopsButton.disabled = true;
+
+    //     navigator.geolocation.getCurrentPosition(async (position) => {
+    //       const { latitude, longitude } = position.coords;
+    //       try {
+    //         const response = await fetch('/api/nearest-stop', {
+    //           method: 'POST',
+    //           headers: { 'Content-Type': 'application/json' },
+    //           body: JSON.stringify({ latitude, longitude })
+    //         });
+    //         const result = await response.json();
+    //         if (!response.ok) throw new Error(result.message || 'Could not fetch stops.');
+    //         updateNearestStopUI(result.nearest_stop || {});
+    //       } catch (err) {
+    //         console.error(err);
+    //         alert(err.message || 'Something went wrong.');
+    //         nearestStopEl.textContent = 'Could not find stop';
+    //         nextBusEl.textContent = 'Please try again';
+    //       } finally {
+    //         findStopsButton.innerHTML = original;
+    //         findStopsButton.disabled = false;
+    //       }
+    //     }, () => {
+    //       alert("Unable to retrieve your location. Please enable location services.");
+    //       findStopsButton.innerHTML = original;
+    //       findStopsButton.disabled = false;
+    //     });
+    //   });
+    // }
+
+    // Weather
+    const apiKey = '2f38aa6028df213af7eab8dae586d01f';
+    const city = 'Brahmapur';
+    const apiUrl = `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${apiKey}&units=metric`;
+
+    const weatherHeading = document.getElementById('weather-heading');
+    const weatherSubtext = document.getElementById('weather-subtext');
+    const weatherIcon = document.getElementById('weather-icon');
+    const weatherError = document.getElementById('error-message');
+
+    async function fetchWeather() {
+      try {
+        const res = await fetch(apiUrl);
+        if (!res.ok) throw new Error('API request failed');
+        const data = await res.json();
+        const condition = data.weather?.[0]?.main || 'Clear';
+
+        const map = {
+          Rain: { h: 'Rain Expected', s: 'Buses may be delayed by 5‑10 minutes.', i: 'fa-cloud-showers-heavy' },
+          Drizzle: { h: 'Light Rain', s: 'Minor delays possible.', i: 'fa-cloud-rain' },
+          Clouds: { h: 'Cloudy Today', s: 'Most buses on time.', i: 'fa-cloud' },
+          Clear: { h: 'Clear Skies', s: 'Perfect weather—on time rides.', i: 'fa-sun' },
+          Thunderstorm: { h: 'Storm Alert', s: 'Expect significant delays. Check alerts.', i: 'fa-cloud-bolt' },
+          Snow: { h: 'Snow Conditions', s: 'Delays likely. Check announcements.', i: 'fa-snowflake' },
+          Mist: { h: 'Misty Morning', s: 'Low visibility. Minor delays possible.', i: 'fa-smog' },
+          Fog: { h: 'Foggy', s: 'Drive safety measures may slow buses.', i: 'fa-smog' },
+          Haze: { h: 'Hazy', s: 'Visibility reduced. Small delays possible.', i: 'fa-smog' }
+        };
+
+        const chosen = map[condition] || map.Clear;
+        weatherHeading.textContent = chosen.h;
+        weatherSubtext.textContent = chosen.s;
+        weatherIcon.className = `fa-solid ${chosen.i} text-xl`;
+        weatherError?.classList.add('hidden');
+      } catch (e) {
+        console.error('Weather fetch error:', e);
+        weatherHeading.textContent = 'Error';
+        weatherSubtext.textContent = 'Could not load data.';
+        weatherIcon.className = 'fa-solid fa-triangle-exclamation text-xl';
+        weatherError?.classList.remove('hidden');
+      }
+    }
+    fetchWeather();
+
+    // Search, filter, sort
+    const searchInput = document.getElementById('route-search');
+    const filterActive = document.getElementById('filter-active');
+    const sortSelect = document.getElementById('sort-select');
+    const grid = document.getElementById('routes-grid');
+    const visibleCount = document.getElementById('visible-count');
+    const activeCountEls = [
+      document.getElementById('active-buses-count'),
+      document.getElementById('active-buses-count-mobile')
+    ].filter(Boolean);
+
+    function applyFilters() {
+      if (!grid) return;
+      const cards = Array.from(grid.querySelectorAll('.route-card'));
+      const q = (searchInput?.value || '').toLowerCase();
+      const activeOnly = !!filterActive?.checked;
+
+      let shown = 0;
+      cards.forEach(card => {
+        const idx = card.dataset.searchIndex || '';
+        const isActive = card.dataset.active === 'true';
+        const match = idx.includes(q);
+        const shouldShow = match && (!activeOnly || isActive);
+        card.classList.toggle('hidden', !shouldShow);
+        if (shouldShow) shown++;
+      });
+      if (visibleCount) visibleCount.textContent = shown;
+    }
+
+    function sortCards(mode) {
+      if (!grid) return;
+      const cards = Array.from(grid.children);
+      const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+      cards.sort((a, b) => {
+        if (mode === 'bus') {
+          return collator.compare(a.dataset.busNumber, b.dataset.busNumber);
+        }
+        if (mode === 'status') {
+          // Live first
+          return (b.dataset.active === 'true') - (a.dataset.active === 'true') || collator.compare(a.dataset.routeName, b.dataset.routeName);
+        }
+        // name default
+        return collator.compare(a.dataset.routeName, b.dataset.routeName);
+      });
+
+      cards.forEach(c => grid.appendChild(c));
+    }
+
+    searchInput?.addEventListener('input', applyFilters);
+    filterActive?.addEventListener('change', applyFilters);
+    sortSelect?.addEventListener('change', (e) => sortCards(e.target.value));
+
+    // Initial sort by name
+    sortCards('name');
+
+  </script>
+
+  <!-- Socket.io live updates -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const socket = io();
+
+      // Function to count and display the number of active buses
+      const recalcActive = () => {
+        const cards = document.querySelectorAll('.route-card');
+        let active = 0;
+        cards.forEach(c => {
+          if (c.dataset.active === 'true') active++;
+        });
+        const els = [
+          document.getElementById('active-buses-count'),
+          document.getElementById('active-buses-count-mobile')
+        ].filter(Boolean);
+        els.forEach(el => el.textContent = active);
+      };
+
+      // Listen for real-time status updates from the server
+      socket.on('trackingStatusUpdate', (data) => {
+        const { busId, status } = data; // status can be 'started' or 'stopped'
+        const card = document.querySelector(`.route-card[data-bus-id="${busId}"]`);
+        if (!card) return;
+
+        const isTracking = status === 'started';
+        card.dataset.active = isTracking ? 'true' : 'false';
+
+      
+        // Find both indicators and hide/show the correct one.
+        const liveIndicator = card.querySelector('.live-indicator');
+        const offlineIndicator = card.querySelector('.offline-indicator'); // Assuming you add this class
+        if (liveIndicator) liveIndicator.classList.toggle('hidden', !isTracking);
+        if (offlineIndicator) offlineIndicator.classList.toggle('hidden', isTracking);
+
+
+        // Use classList to add/remove classes without deleting existing ones.
+        const btn = card.querySelector('.track-button');
+        if (btn) {
+          
+          const activeClasses = ['bg-brand-600', 'text-white', 'hover:bg-brand-700'];
+          const inactiveClasses = ['bg-slate-100', 'text-slate-400', 'dark:bg-slate-800', 'dark:text-slate-500', 'cursor-not-allowed'];
+
+          // Update the button's content and classes based on the new status
+          if (isTracking) {
+            btn.href = `/track/${busId}`;
+            btn.innerHTML = `<i class="fa-solid fa-route"></i> <span>Track Bus</span>`;
+            btn.classList.remove(...inactiveClasses);
+            btn.classList.add(...activeClasses);
+          } else {
+            btn.href = '#';
+            btn.innerHTML = `<i class="fa-solid fa-ban"></i> <span>Not Active</span>`;
+            btn.classList.remove(...activeClasses);
+            btn.classList.add(...inactiveClasses);
+          }
+        }
+
+        recalcActive();
+
+        //y the "Active only" filter if it's checked
+        const filterActive = document.getElementById('filter-active');
+        if (filterActive?.checked) {
+          const idx = card.dataset.searchIndex || '';
+          const q = (document.getElementById('route-search')?.value || '').toLowerCase();
+          const shouldShow = (idx.includes(q) && isTracking);
+          card.classList.toggle('hidden', !shouldShow);
+        }
+      });
+    });
+  </script>
+
+</body>
+
+</html>

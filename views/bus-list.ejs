@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bus Schedule</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { darkMode: 'class' }
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+  <style>
+    :root {
+      --bg-color: #f1f5f9;                 /* slate-100 */
+      --card-bg-color: #ffffff;
+      --text-primary-color: #0f172a;       /* slate-900 */
+      --text-secondary-color: #475569;     /* slate-600 */
+      --border-color: rgba(0, 0, 0, 0.08);
+      --ring-color: rgba(59, 130, 246, 0.25);
+      --primary-accent-color: #2563eb;
+      --timeline-line-color: rgba(37, 99, 235, 0.2);
+      --gradient-1-opacity: 0.15;
+      --gradient-2-opacity: 0.15;
+    }
+    html.dark {
+      --bg-color: #0b1020;
+      --card-bg-color: rgba(255, 255, 255, 0.05);
+      --text-primary-color: #ffffff;
+      --text-secondary-color: rgba(255, 255, 255, 0.7);
+      --border-color: rgba(255, 255, 255, 0.1);
+      --ring-color: rgba(37, 99, 235, 0.22);
+      --timeline-line-color: rgba(37, 99, 235, 0.2);
+      --gradient-1-opacity: 0.25;
+      --gradient-2-opacity: 0.25;
+    }
+
+    html, body { height: 100%; }
+    body {
+      font-family: 'Poppins', system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+      background-color: var(--bg-color);
+      color: var(--text-primary-color);
+      transition: background-color 0.2s ease, color 0.2s ease;
+    }
+    .app-bg {
+      min-height: 100%;
+      background:
+        radial-gradient(1000px 600px at 10% -10%, rgba(59,130,246, var(--gradient-1-opacity)), transparent 60%),
+        radial-gradient(800px 500px at 100% 0%, rgba(147,51,234, var(--gradient-2-opacity)), transparent 60%),
+        var(--bg-color);
+      transition: background 0.2s ease;
+    }
+
+    /* Components */
+    .route-card {
+      transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+    }
+    .route-card:focus-within {
+      outline: none;
+      box-shadow: 0 0 0 4px var(--ring-color);
+    }
+    .route-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.08);
+    }
+    html.dark .route-card:hover {
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
+    }
+    details summary::-webkit-details-marker { display: none; }
+    summary { list-style: none; cursor: pointer; }
+
+    .timeline {
+      position: relative;
+      margin: 0;
+      padding: 0 0 0 28px;
+      list-style: none;
+    }
+    .timeline::before {
+      content: "";
+      position: absolute;
+      left: 12px;
+      top: 8px;
+      bottom: 8px;
+      width: 2px;
+      background: linear-gradient(var(--timeline-line-color), rgba(99, 102, 241, 0.3));
+      border-radius: 2px;
+    }
+    .t-item {
+      position: relative;
+      display: grid;
+      grid-template-columns: 70px 1fr;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 8px;
+      border-radius: 10px;
+    }
+    .t-dot {
+      position: absolute;
+      left: -3px;
+      top: 14px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--card-bg-color);
+      border: 3px solid var(--primary-accent-color);
+      box-shadow: 0 0 0 6px color-mix(in srgb, var(--primary-accent-color) 8%, transparent);
+    }
+    .t-dot.start { border-color: #22c55e; }
+    .t-dot.end   { border-color: #ef4444; }
+    .time-mono { font-feature-settings: "tnum" 1, "ss01" 1; font-variant-numeric: tabular-nums; }
+
+    /* Better focus visibility */
+    :focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px var(--ring-color);
+      border-radius: 10px;
+    }
+  </style>
+</head>
+
+<body class="antialiased selection:bg-blue-600/20 selection:text-blue-900 dark:selection:text-white">
+  <div class="app-bg">
+    <div class="max-w-6xl mx-auto px-4 md:px-6 py-8 md:py-12">
+
+      <header class="mb-8 md:mb-12">
+        <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h1 class="text-slate-900 dark:text-white text-3xl md:text-4xl font-bold tracking-tight">
+              Bus Schedules
+            </h1>
+            <p class="text-slate-600 dark:text-white/70 mt-1">
+              Browse routes, check stop times, and expand for full details.
+            </p>
+          </div>
+
+          <!-- Controls -->
+          <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+            <!-- Search -->
+            <div class="relative w-full sm:w-64">
+              <label for="search" class="sr-only">Search routes or stops</label>
+              <i class="fa-solid fa-magnifying-glass text-slate-500 dark:text-white/70 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+              <input
+                id="search"
+                class="pl-10 pr-10 py-2 rounded-lg bg-white dark:bg-white/10 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-white/60 border border-slate-300 dark:border-white/15 focus:outline-none focus:ring-2 focus:ring-blue-500/40 w-full"
+                type="text"
+                placeholder="Search routes or stops" />
+              <button id="clearSearch"
+                class="hidden absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 dark:text-white/60 dark:hover:text-white focus:outline-none"
+                aria-label="Clear search">
+                <i class="fa-solid fa-circle-xmark"></i>
+              </button>
+            </div>
+
+            <!-- Sort -->
+            <!-- <div class="relative">
+              <label for="sortBy" class="sr-only">Sort routes</label>
+              <select
+                id="sortBy"
+                class="px-3 py-2 rounded-lg bg-white dark:bg-white/10 border border-slate-300 dark:border-white/15 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 appearance-none pr-10">
+                <option value="start">Sort by start time</option>
+                <option value="duration">Sort by duration</option>
+                <option value="stops">Sort by number of stops</option>
+                <option value="name">Sort by name</option>
+                <option value="number">Sort by bus number</option>
+              </select>
+              <i class="fa-solid fa-caret-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-white/70"></i>
+            </div> -->
+
+            <!-- Theme toggle -->
+            <button id="theme-toggle" type="button" aria-label="Toggle theme" title="Toggle theme"
+              class="hidden  w-10 h-10 flex items-center justify-center rounded-lg bg-white dark:bg-white/10 border border-slate-300 dark:border-white/15 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40">
+              <i id="theme-icon-light" class="fa-solid fa-sun"></i>
+              <i id="theme-icon-dark" class="fa-solid fa-moon"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div id="stats" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-6">
+          <div class="rounded-xl bg-white dark:bg-white/10 border border-slate-200 dark:border-white/10 px-4 py-3 flex items-center gap-3">
+            <span class="w-9 h-9 rounded-lg bg-blue-500/10 dark:bg-blue-500/15 border border-blue-500/20 dark:border-blue-500/30 flex items-center justify-center text-blue-600 dark:text-blue-300">
+              <i class="fa-solid fa-list-ol"></i>
+            </span>
+            <div>
+              <div class="text-slate-500 dark:text-white/70 text-xs uppercase tracking-wide">Total Routes (Visible)</div>
+              <div class="text-slate-800 dark:text-white font-semibold text-xl">
+                <span id="statTotal">—</span>
+                <span id="statTotalAll" class="text-sm text-slate-500 dark:text-white/70"></span>
+              </div>
+            </div>
+          </div>
+          <div class="rounded-xl bg-white dark:bg-white/10 border border-slate-200 dark:border-white/10 px-4 py-3 flex items-center gap-3">
+            <span class="w-9 h-9 rounded-lg bg-emerald-500/10 dark:bg-emerald-500/15 border border-emerald-500/20 dark:border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-300">
+              <i class="fa-regular fa-clock"></i>
+            </span>
+            <div>
+              <div class="text-slate-500 dark:text-white/70 text-xs uppercase tracking-wide">Earliest Start</div>
+              <div id="statEarliest" class="text-slate-800 dark:text-white font-semibold text-xl">—</div>
+            </div>
+          </div>
+          <div class="rounded-xl bg-white dark:bg-white/10 border border-slate-200 dark:border-white/10 px-4 py-3 sm:col-span-2 lg:col-span-1 flex items-center gap-3">
+            <span class="w-9 h-9 rounded-lg bg-violet-500/10 dark:bg-violet-500/15 border border-violet-500/20 dark:border-violet-500/30 flex items-center justify-center text-violet-600 dark:text-violet-300">
+              <i class="fa-solid fa-hourglass-half"></i>
+            </span>
+            <div>
+              <div class="text-slate-500 dark:text-white/70 text-xs uppercase tracking-wide">Avg Duration</div>
+              <div id="statAvgDur" class="text-slate-800 dark:text-white font-semibold text-xl">—</div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <div id="routes" class="space-y-4">
+          <% if (Array.isArray(busSchedule) && busSchedule.length) { %>
+            <% busSchedule.forEach((bus) => {
+                const stops = Array.isArray(bus.stops) ? bus.stops : [];
+                const first = stops[0] || {};
+                const last  = stops[stops.length - 1] || {};
+                const stopNames = stops.map(s => (s && s.name) ? s.name : '').join(' ').trim();
+            %>
+              <details class="route-card bg-white/95 backdrop-blur-sm dark:bg-white/5 border border-slate-200/80 dark:border-white/10 rounded-2xl overflow-hidden"
+                       data-name="<%= (bus.name || '').toLowerCase() %>"
+                       data-number="<%= (bus.busNumber || '').toString().toLowerCase() %>"
+                       data-stops="<%= stopNames.replace(/"/g, '&quot;').toLowerCase() %>"
+                       data-start-time="<%= first.scheduledTime || '' %>"
+                       data-end-time="<%= last.scheduledTime  || '' %>"
+                       data-stops-count="<%= stops.length %>">
+                <summary class="p-4 md:p-5 flex flex-col sm:flex-row sm:items-center gap-4 group">
+                  <!-- Icon -->
+                  <div class="shrink-0 bg-slate-100 dark:bg-white/15 border border-slate-200 dark:border-white/20 p-3 rounded-xl text-slate-800 dark:text-white">
+                    <i class="fa-solid fa-bus-simple text-2xl w-8 text-center"></i>
+                  </div>
+
+                  <!-- Main info -->
+                  <div class="min-w-0 flex-grow">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <h2 class="text-slate-800 dark:text-white font-semibold truncate"><%= bus.name %></h2>
+                      <span class="text-xs font-semibold px-2 py-1 rounded-full bg-blue-500/10 dark:bg-blue-500/15 border border-blue-500/20 dark:border-blue-500/30 text-blue-700 dark:text-blue-200">
+                        #<%= bus.busNumber %>
+                      </span>
+                    </div>
+
+                    <% if (stops.length > 1) { %>
+                      <div class="mt-2 text-slate-700 dark:text-white/90 text-sm flex items-center gap-x-2 gap-y-1 flex-wrap">
+                        <div class="flex items-center gap-2">
+                          <i class="fa-solid fa-location-dot text-emerald-600 dark:text-emerald-300"></i>
+                          <span class="font-medium truncate"><%= first.name %></span>
+                          <span class="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/10 border border-slate-200 dark:border-white/15 text-xs time-mono"><%= first.scheduledTime || '--:--' %></span>
+                        </div>
+                        <span class="text-slate-400 dark:text-white/50">
+                          <i class="fa-solid fa-arrow-right-long"></i>
+                        </span>
+                        <div class="flex items-center gap-2">
+                          <i class="fa-solid fa-flag-checkered text-rose-600 dark:text-rose-300"></i>
+                          <span class="font-medium truncate"><%= last.name %></span>
+                          <span class="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/10 border border-slate-200 dark:border-white/15 text-xs time-mono"><%= last.scheduledTime || '--:--' %></span>
+                        </div>
+                      </div>
+                    <% } %>
+                  </div>
+
+                  <!-- Badges + Chevron -->
+                  <div class="flex items-center justify-between sm:justify-start sm:flex-col sm:items-end gap-2 shrink-0 sm:ml-auto">
+                    <div class="flex items-center gap-2">
+                      <span class="duration-badge inline-flex items-center gap-2 px-2 py-1 rounded-full bg-emerald-500/10 dark:bg-emerald-500/15 border border-emerald-500/20 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-200 text-xs font-semibold">
+                        <i class="fa-regular fa-clock"></i>
+                        <span data-role="duration">—</span>
+                      </span>
+                      <span class="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-slate-100 dark:bg-white/10 border border-slate-200 dark:border-white/15 text-slate-700 dark:text-white text-xs">
+                        <i class="fa-solid fa-map-pin"></i>
+                        <%= stops.length %> stops
+                      </span>
+                    </div>
+                    <i class="fa-solid fa-chevron-down text-slate-500 dark:text-white/70 transition-transform duration-200 group-open:rotate-180 sm:mt-2"></i>
+                  </div>
+                </summary>
+
+                <!-- Expanded timeline -->
+                <% if (stops.length) { %>
+                  <div class="border-t border-slate-200 dark:border-white/10 bg-slate-50/60 dark:bg-black/20">
+                    <div class="px-4 md:px-6 py-4">
+                      <h3 class="text-slate-800 dark:text-white font-semibold mb-3 flex items-center gap-2">
+                        <i class="fa-solid fa-timeline text-blue-600 dark:text-blue-300"></i>
+                        Route Timeline
+                      </h3>
+                      <ul class="timeline">
+                        <% stops.forEach((stop, idx) => { %>
+                          <li class="t-item hover:bg-slate-200/50 dark:hover:bg-white/[.06]">
+                           
+                            <div class="time-mono text-slate-700 dark:text-white/90 text-sm"><%= stop.scheduledTime || '--:--' %></div>
+                            <div class="text-slate-900 dark:text-white font-medium flex items-center gap-2">
+                              <% if (idx === 0) { %>
+                                <i class="fa-solid fa-location-dot text-emerald-600 dark:text-emerald-300"></i>
+                              <% } else if (idx === stops.length - 1) { %>
+                                <i class="fa-solid fa-flag-checkered text-rose-600 dark:text-rose-300"></i>
+                              <% } else { %>
+                                <i class="fa-regular fa-circle text-slate-400 dark:text-white/60"></i>
+                              <% } %>
+                              <span><%= stop.name %></span>
+                            </div>
+                          </li>
+                        <% }) %>
+                      </ul>
+                    </div>
+                  </div>
+                <% } %>
+              </details>
+            <% }); %>
+          <% } else { %>
+            <div class="rounded-2xl bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 p-10 text-center">
+              <div class="mx-auto w-14 h-14 rounded-xl bg-slate-100 dark:bg-white/10 border border-slate-200 dark:border-white/15 flex items-center justify-center text-slate-700 dark:text-white mb-3">
+                <i class="fa-solid fa-route text-xl"></i>
+              </div>
+              <h2 class="text-slate-800 dark:text-white text-xl font-semibold">No schedules available</h2>
+              <p class="text-slate-500 dark:text-white/70 mt-1">Please check back later for updates.</p>
+            </div>
+          <% } %>
+        </div>
+
+        <!-- No results placeholder for search filtering -->
+        <div id="noResults" class="hidden rounded-2xl bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 p-10 text-center mt-4">
+          <div class="mx-auto w-14 h-14 rounded-xl bg-slate-100 dark:bg-white/10 border border-slate-200 dark:border-white/15 flex items-center justify-center text-slate-700 dark:text-white mb-3">
+            <i class="fa-solid fa-magnifying-glass-minus text-xl"></i>
+          </div>
+          <h2 class="text-slate-800 dark:text-white text-xl font-semibold">No results</h2>
+          <p class="text-slate-500 dark:text-white/70 mt-1">Try a different search or clear the filter.</p>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      setupThemeToggle();
+      initializeRouteCards();
+    });
+
+    // Theme
+    function setupThemeToggle() {
+      const themeToggle = document.getElementById('theme-toggle');
+      const lightIcon = document.getElementById('theme-icon-light');
+      const darkIcon = document.getElementById('theme-icon-dark');
+
+      const applyTheme = (theme) => {
+        if (theme === 'dark') {
+          document.documentElement.classList.add('dark');
+          lightIcon.style.display = 'none';
+          darkIcon.style.display = 'block';
+        } else {
+          document.documentElement.classList.remove('dark');
+          lightIcon.style.display = 'block';
+          darkIcon.style.display = 'none';
+        }
+        themeToggle.setAttribute('aria-pressed', theme === 'dark' ? 'true' : 'false');
+      };
+
+      const savedTheme = localStorage.getItem('theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const initialTheme = savedTheme || (prefersDark ? 'dark' : 'light');
+      applyTheme(initialTheme);
+
+      themeToggle.addEventListener('click', () => {
+        const isDark = document.documentElement.classList.contains('dark');
+        const newTheme = isDark ? 'light' : 'dark';
+        localStorage.setItem('theme', newTheme);
+        applyTheme(newTheme);
+      });
+    }
+
+    // Cards
+    function initializeRouteCards() {
+      const container = document.getElementById('routes');
+      if (!container) return;
+
+      const cards = [...container.querySelectorAll('details.route-card')];
+      const durationMap = new Map();
+
+      // Calculate and display duration for each route.
+      cards.forEach(card => {
+        const start = card.dataset.startTime || '';
+        const end   = card.dataset.endTime || '';
+        const duration = calculateDuration(start, end);
+        durationMap.set(card, duration);
+        const slot = card.querySelector('[data-role="duration"]');
+        if (slot) slot.textContent = formatDuration(duration);
+      });
+
+      // Only one card open at a time.
+      container.addEventListener('toggle', (e) => {
+        if (e.target.tagName === 'DETAILS' && e.target.open) {
+          cards.forEach(card => { if (card !== e.target) card.open = false; });
+        }
+      }, true);
+
+      // Setup interactivity
+      setupEventListeners(cards, durationMap);
+      // Initial stats and state
+      performFilterAndSort(cards, durationMap);
+    }
+
+    // Filter + Sort wiring
+    function setupEventListeners(cards, durationMap) {
+      const searchInput = document.getElementById('search');
+      const sortBySelect = document.getElementById('sortBy');
+      const clearBtn = document.getElementById('clearSearch');
+
+      const handler = () => performFilterAndSort(cards, durationMap);
+
+      searchInput?.addEventListener('input', () => {
+        clearBtn.classList.toggle('hidden', !searchInput.value);
+        handler();
+      });
+      sortBySelect?.addEventListener('change', handler);
+      clearBtn?.addEventListener('click', () => {
+        searchInput.value = '';
+        clearBtn.classList.add('hidden');
+        handler();
+        searchInput.focus();
+      });
+    }
+
+    // Core filter + sort + stats update
+    function performFilterAndSort(cards, durationMap) {
+      const container = document.getElementById('routes');
+      const searchInput = document.getElementById('search');
+      const sortBySelect = document.getElementById('sortBy');
+      const noResults = document.getElementById('noResults');
+
+      // 1) Filter
+      const term = (searchInput?.value || '').trim().toLowerCase();
+      let visibleCards = [];
+      cards.forEach(card => {
+        const name = card.dataset.name || '';
+        const num  = card.dataset.number || '';
+        const stops = card.dataset.stops || '';
+        const isMatch = !term || name.includes(term) || num.includes(term) || stops.includes(term);
+        card.style.display = isMatch ? '' : 'none';
+        if (isMatch) visibleCards.push(card);
+      });
+
+      // 2) Sort
+      const sortValue = sortBySelect?.value || 'start';
+      visibleCards.sort((a, b) => {
+        switch (sortValue) {
+          case 'start': {
+            const sa = timeToMinutes(a.dataset.startTime);
+            const sb = timeToMinutes(b.dataset.startTime);
+            return (sa ?? Infinity) - (sb ?? Infinity);
+          }
+          case 'duration': {
+            return (durationMap.get(a) ?? Infinity) - (durationMap.get(b) ?? Infinity);
+          }
+          case 'stops': {
+            return (parseInt(a.dataset.stopsCount, 10) || 0) - (parseInt(b.dataset.stopsCount, 10) || 0);
+          }
+          case 'name': {
+            return (a.dataset.name || '').localeCompare(b.dataset.name || '');
+          }
+          case 'number': {
+            return (parseInt(a.dataset.number, 10) || 0) - (parseInt(b.dataset.number, 10) || 0);
+          }
+          default: return 0;
+        }
+      });
+
+      // 3) Re-append in order
+      visibleCards.forEach(el => container.appendChild(el));
+
+      // 4) No results placeholder
+      noResults.classList.toggle('hidden', visibleCards.length > 0);
+
+      // 5) Stats
+      updateStats(visibleCards, durationMap, cards.length);
+    }
+
+    // Stats
+    function updateStats(visibleCards, durationMap, totalCount) {
+      const statTotal = document.getElementById('statTotal');
+      const statTotalAll = document.getElementById('statTotalAll');
+      const statEarliest = document.getElementById('statEarliest');
+      const statAvgDur = document.getElementById('statAvgDur');
+      if (!statTotal) return;
+
+      statTotal.textContent = visibleCards.length;
+      if (statTotalAll) {
+        statTotalAll.textContent = totalCount != null ? ` / ${totalCount}` : '';
+      }
+
+      const starts = visibleCards
+        .map(c => timeToMinutes(c.dataset.startTime))
+        .filter(v => v != null)
+        .sort((a, b) => a - b);
+
+      statEarliest.textContent = starts.length > 0 ? formatTime(starts[0]) : '—';
+
+      const durations = visibleCards.map(c => durationMap.get(c)).filter(v => v != null);
+      const avg = durations.length ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : null;
+      statAvgDur.textContent = formatDuration(avg);
+    }
+
+    // Utils
+    const timeToMinutes = (timeString) => {
+      if (!timeString || !/^\d{1,2}:\d{2}$/.test(timeString)) return null;
+      const [hours, minutes] = timeString.split(':').map(Number);
+      return hours * 60 + minutes;
+    };
+
+    const calculateDuration = (start, end) => {
+      const startMinutes = timeToMinutes(start);
+      const endMinutes = timeToMinutes(end);
+      if (startMinutes == null || endMinutes == null) return null;
+      let duration = endMinutes - startMinutes;
+      if (duration < 0) duration += 24 * 60; // Overnight routes
+      return duration;
+    };
+
+    const formatDuration = (totalMinutes) => {
+      if (totalMinutes == null) return '—';
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+    };
+
+    const formatTime = (totalMinutes) => {
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    };
+  </script>
+</body>
+</html>

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Driver Login | Campus Bus</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    :root { color-scheme: light dark; }
+    html, body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+  <main class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8">
+      <!-- Brand -->
+      <div class="flex items-center gap-3 mb-6">
+        <div class="h-10 w-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl">🚌</div>
+        <div>
+          <p class="text-xs tracking-wide text-slate-500 uppercase">Campus Bus</p>
+          <h1 class="text-lg font-semibold text-slate-800">Driver Portal</h1>
+        </div>
+      </div>
+
+      <!-- Heading -->
+      <div class="mb-6">
+        <h2 class="text-xl font-semibold text-slate-900">Sign in</h2>
+        <p class="text-sm text-slate-500 mt-1">Use your assigned credentials</p>
+      </div>
+
+      <!-- Server error (optional) -->
+      <div id="serverError" class="hidden mb-4 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 px-3 py-2 text-sm" role="alert" aria-live="polite"></div>
+
+      <!-- Form -->
+      <form id="loginForm" action="/auth/login" method="POST" class="space-y-4">
+        <!-- Username -->
+        <div>
+          <label for="username" class="block text-sm font-medium text-slate-700">Username</label>
+          <input
+            id="username"
+            name="username"
+            type="text"
+            required
+            autocomplete="username"
+            placeholder="driver123"
+            class="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          />
+        </div>
+
+        <!-- Password -->
+        <div>
+          <div class="flex items-center justify-between">
+            <label for="password" class="block text-sm font-medium text-slate-700">Password</label>
+            <a href="/auth/forgot-password" class="text-sm text-indigo-600 hover:text-indigo-500">Forgot?</a>
+          </div>
+          <div class="relative mt-1">
+            <input
+              id="password"
+              name="password"
+              type="password"
+              required
+              autocomplete="current-password"
+              placeholder="••••••••"
+              class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 pr-12 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            />
+            <button
+              type="button"
+              id="togglePassword"
+              class="absolute inset-y-0 right-0 px-3 text-slate-400 hover:text-slate-600"
+              aria-label="Show password"
+              aria-pressed="false"
+            >
+              <svg id="eyeOpen" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                <circle cx="12" cy="12" r="3" stroke-width="2"></circle>
+              </svg>
+              <svg id="eyeClosed" class="h-5 w-5 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M3 3l3.59 3.59M9.88 9.88L7 7m2.88 2.88a3 3 0 114.24 4.24M21 21l-3.29-3.29m0 0A10.02 10.02 0 0021.54 12C20.27 7.94 16.48 5 12 5c-.65 0-1.28.06-1.89.17"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Submit -->
+        <button
+          id="submitBtn"
+          type="submit"
+          class="w-full rounded-lg bg-indigo-600 text-white font-semibold py-2.5 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+        >
+          Sign In
+        </button>
+      </form>
+
+      <!-- Footer -->
+      <p class="text-sm text-center text-slate-500 mt-6">
+        New driver? <a href="/auth/register" class="font-semibold text-indigo-600 hover:text-indigo-500">Register</a>
+      </p>
+    </div>
+  </main>
+
+  <script>
+    // Simple password visibility toggle
+    const passwordInput = document.getElementById('password');
+    const toggleBtn = document.getElementById('togglePassword');
+    const eyeOpen = document.getElementById('eyeOpen');
+    const eyeClosed = document.getElementById('eyeClosed');
+
+    toggleBtn.addEventListener('click', () => {
+      const isPwd = passwordInput.type === 'password';
+      passwordInput.type = isPwd ? 'text' : 'password';
+      toggleBtn.setAttribute('aria-pressed', String(isPwd));
+      toggleBtn.setAttribute('aria-label', isPwd ? 'Hide password' : 'Show password');
+      eyeOpen.classList.toggle('hidden');
+      eyeClosed.classList.toggle('hidden');
+      passwordInput.focus();
+    });
+
+    // Optional: show server error from ?error=
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get('error');
+    if (err) {
+      const el = document.getElementById('serverError');
+      el.textContent = err;
+      el.classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>
