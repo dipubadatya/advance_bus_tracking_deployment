@@ -257,827 +257,1191 @@
   <script src="https://unpkg.com/leaflet.fullscreen@2.4.0/Control.FullScreen.js"></script>
 
   <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      if (typeof busData === 'undefined') return;
+    document.addEventListener("DOMContentLoaded", () => {
+        if (typeof busData === "undefined") return;
 
-      // ---------- CONSTANTS ----------
-      const AVERAGE_BUS_SPEED_KMPH = 28;     // Slightly higher for city moving avg
-      const ARRIVAL_THRESHOLD_METERS = 15;    // Room for GPS jitter
-      const ROLLING_AVERAGE_SAMPLES = 6;
-      const LOCATION_STALE_MS = 20000;
-      const UI_REFRESH_MS = 4000;
-      const MIN_VALID_MOVE_METERS = 1.5;
-      const MIN_VALID_TIME_SEC = 0.1;
-      const MAX_REALISTIC_SPEED_KMPH = 140;
+        // ---------- CONSTANTS ----------
+        const AVERAGE_BUS_SPEED_KMPH = 28;
+        // const ARRIVAL_THRESHOLD_METERS = 15; // REPLACED by geofence logic below
+        const ROLLING_AVERAGE_SAMPLES = 6;
+        const LOCATION_STALE_MS = 20000;
+        const UI_REFRESH_MS = 4000;
+        const MIN_VALID_MOVE_METERS = 1.5;
+        const MIN_VALID_TIME_SEC = 0.1;
+        const MAX_REALISTIC_SPEED_KMPH = 140;
 
-      // ---------- DOM ----------
-      const dom = {
-        statusIndicator: document.getElementById('status-indicator'),
-        statusDot: document.getElementById('status-dot'),
-        statusText: document.getElementById('status-text'),
+        // Arrivals: geofence + dwell + speed logic (more reliable)
+        const STOP_GEOFENCE_M = 22; // enter radius to consider at-stop
+        const STOP_GEOFENCE_OUT_M = 30; // exit radius (hysteresis)
+        const STOP_DWELL_SEC = 8; // dwell time to consider arrived if not already
+        const STOP_SPEED_ARRIVE_KMH = 7; // if speed is below this while in geofence, also counts as arrival
+        // ---------- DOM ----------
+        const dom = {
+          statusIndicator: document.getElementById("status-indicator"),
+          statusDot: document.getElementById("status-dot"),
+          statusText: document.getElementById("status-text"),
 
-        followBtn: document.getElementById('follow-btn'),
-        followIcon: document.getElementById('follow-icon'),
-        recenterBtn: document.getElementById('recenter-btn'),
-        myLocBtn: document.getElementById('myloc-btn'),
+          followBtn: document.getElementById("follow-btn"),
+          followIcon: document.getElementById("follow-icon"),
+          recenterBtn: document.getElementById("recenter-btn"),
+          myLocBtn: document.getElementById("myloc-btn"),
 
-        summaryCard: document.getElementById('summary-card'),
-        summaryNextStop: document.getElementById('summary-next-stop'),
-        summaryEta: document.getElementById('summary-eta'),
-        summarySpeed: document.getElementById('summary-speed'),
-        summaryToNext: document.getElementById('summary-to-next'),
-        summaryProgress: document.getElementById('summary-progress'),
-        summaryProgressFill: document.getElementById('summary-progress-fill'),
+          summaryCard: document.getElementById("summary-card"),
+          summaryNextStop: document.getElementById("summary-next-stop"),
+          summaryEta: document.getElementById("summary-eta"),
+          summarySpeed: document.getElementById("summary-speed"),
+          summaryToNext: document.getElementById("summary-to-next"),
+          summaryProgress: document.getElementById("summary-progress"),
+          summaryProgressFill: document.getElementById("summary-progress-fill"),
 
-        stopListContainers: document.querySelectorAll('.stop-list-container'),
-        routeSummaryContainers: document.querySelectorAll('.route-summary'),
+          stopListContainers: document.querySelectorAll(".stop-list-container"),
+          routeSummaryContainers: document.querySelectorAll(".route-summary"),
 
-        toggleStopsBtn: document.getElementById('toggle-stops-btn'),
-        mobileStopSheet: document.getElementById('mobile-stop-sheet'),
-        closeStopsBtn: document.getElementById('close-stops-btn'),
+          toggleStopsBtn: document.getElementById("toggle-stops-btn"),
+          mobileStopSheet: document.getElementById("mobile-stop-sheet"),
+          closeStopsBtn: document.getElementById("close-stops-btn"),
 
-        darkModeBtn: document.getElementById('dark-mode-btn'),
-        darkModeIcon: document.getElementById('dark-mode-icon'),
+          darkModeBtn: document.getElementById("dark-mode-btn"),
+          darkModeIcon: document.getElementById("dark-mode-icon"),
 
-        fullscreenBtn: document.getElementById('fullscreen-btn'),
-        layersBtn: document.getElementById('layers-btn'),
-        layersMenu: document.getElementById('layers-menu'),
-      };
-
-      // ---------- STATE ----------
-      const tripState = {
-        busId: busData._id,
-        arrivalTimes: new Map(),
-        lastLocation: null,        // {latlng, timestamp, bearing}
-        recentSpeeds: [],
-        currentSpeedKmh: 0,
-        follow: true,              // Follow bus movement
-        lastArrivedStopIndex: -1,
-        currentNextStopIndex: -1,
-
-        fullRouteCoords: null,     // LatLng[] from OSRM
-        cumRouteDist: null,        // Cumulative distances per route point
-        totalRouteMeters: 0,
-
-        stopSnaps: [],             // [{point, index, cumDist}]
-        lastUpdateTs: 0,
-        liveState: 'offline',      // 'live' | 'stale' | 'offline'
-
-        baseMapMode: localStorage.getItem('baseMapMode') || 'auto', // auto|light|dark|satellite
-        theme: localStorage.getItem('theme') || 'light',
-      };
-
-      const timers = {
-        uiIntervalId: null,
-        staleTimeoutId: null,
-      };
-
-      // ---------- MAP ----------
-      const initialLat = busData.currentLocation?.lat || busData.stops?.[0]?.lat || 19.3149;
-      const initialLng = busData.currentLocation?.lng || busData.stops?.[0]?.lng || 84.7941;
-
-      const map = L.map('map', { fullscreenControl: false, zoomControl: false })
-        .setView([initialLat, initialLng], 14);
-      // L.control.zoom({ position: 'bottomright' }).addTo(map);
-      // L.control.scale({ position: 'bottomleft', imperial: false }).addTo(map);
-
-      // Base layers (free)
-      const tileLayers = {
-        light: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; OpenStreetMap contributors'
-        }),
-        dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-          attribution: '&copy; OpenStreetMap, &copy; CartoDB'
-        }),
-        satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-          attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
-        })
-      };
-      let currentBaseLayer = null;
-
-      function setBaseLayer(mode) {
-        // Keep selection stable in localStorage
-        tripState.baseMapMode = mode;
-        localStorage.setItem('baseMapMode', mode);
-
-        if (currentBaseLayer) map.removeLayer(currentBaseLayer);
-        const theme = tripState.theme;
-
-        if (mode === 'auto') {
-          currentBaseLayer = (theme === 'dark') ? tileLayers.dark : tileLayers.light;
-        } else if (mode === 'light') {
-          currentBaseLayer = tileLayers.light;
-        } else if (mode === 'dark') {
-          currentBaseLayer = tileLayers.dark;
-        } else if (mode === 'satellite') {
-          currentBaseLayer = tileLayers.satellite;
-        } else {
-          currentBaseLayer = tileLayers.light;
-        }
-        currentBaseLayer.addTo(map);
-        updateLayerMenuUI();
-      }
-
-      // Theme
-      function applyTheme(theme) {
-        tripState.theme = theme;
-        localStorage.setItem('theme', theme);
-        if (theme === 'dark') {
-          document.body.classList.add('dark-mode');
-          dom.darkModeIcon?.classList.replace('fa-moon', 'fa-sun');
-        } else {
-          document.body.classList.remove('dark-mode');
-          dom.darkModeIcon?.classList.replace('fa-sun', 'fa-moon');
-        }
-        // If auto basemap, adjust with theme
-        if (tripState.baseMapMode === 'auto') setBaseLayer('auto');
-      }
-      function toggleTheme() {
-        const newTheme = document.body.classList.contains('dark-mode') ? 'light' : 'dark';
-        applyTheme(newTheme);
-      }
-
-      function updateLayerMenuUI() {
-        if (!dom.layersMenu) return;
-        const items = dom.layersMenu.querySelectorAll('.menu-item');
-        items.forEach(item => {
-          const mode = item.getAttribute('data-style');
-          const sel = item.querySelector('.sel-ind');
-          const unsel = item.querySelector('.unsel-ind');
-          const isSel = mode === tripState.baseMapMode;
-          if (sel && unsel) {
-            sel.classList.toggle('hidden', !isSel);
-            unsel.classList.toggle('hidden', isSel);
-          }
-        });
-      }
-
-      // Apply theme + base layer at startup
-      applyTheme(tripState.theme);
-      setBaseLayer(tripState.baseMapMode);
-
-      // Marker + polylines
-      const busIcon = L.divIcon({
-        html: `<img src="/bus-school.png" class="bus-icon-rotated" style="width:40px;height:40px;">`,
-        className: '',
-        iconSize: [40, 40],
-        iconAnchor: [20, 20]
-      });
-      let busMarker = null;
-      let fullRoutePolyline = null;
-      let traveledRoutePolyline = null;
-
-      // Smooth marker animation
-      const animation = { reqId: null, active: false, start: null, end: null, startTs: 0, duration: 1000 };
-      function lerp(a, b, t) { return a + (b - a) * t; }
-      function animateBus(toLatLng, durationMs = 1000) {
-        if (!busMarker) {
-          busMarker = L.marker(toLatLng, { icon: busIcon, zIndexOffset: 1000 }).addTo(map);
-          return;
-        }
-        if (animation.reqId) cancelAnimationFrame(animation.reqId);
-        animation.active = true;
-        animation.start = busMarker.getLatLng();
-        animation.end = toLatLng;
-        animation.startTs = performance.now();
-        animation.duration = Math.max(200, Math.min(2000, durationMs));
-
-        const step = (ts) => {
-          const t = Math.min(1, (ts - animation.startTs) / animation.duration);
-          const lat = lerp(animation.start.lat, animation.end.lat, t);
-          const lng = lerp(animation.start.lng, animation.end.lng, t);
-          busMarker.setLatLng([lat, lng]);
-          if (t < 1 && animation.active) {
-            animation.reqId = requestAnimationFrame(step);
-          } else {
-            animation.active = false;
-          }
+          fullscreenBtn: document.getElementById("fullscreen-btn"),
+          layersBtn: document.getElementById("layers-btn"),
+          layersMenu: document.getElementById("layers-menu"),
         };
-        animation.reqId = requestAnimationFrame(step);
-      }
 
-      function rotateBusMarker(bearingDeg) {
-        if (!busMarker) return;
-        const el = busMarker.getElement();
-        if (!el) {
-          requestAnimationFrame(() => rotateBusMarker(bearingDeg));
-          return;
-        }
-        const img = el.querySelector('.bus-icon-rotated');
-        if (img) img.style.transform = `rotate(${bearingDeg}deg)`;
-      }
+        // ---------- STATE ----------
+        const tripState = {
+          busId: busData._id,
+          arrivalTimes: new Map(),
+          lastLocation: null, // {latlng, timestamp, bearing}
+          recentSpeeds: [],
+          currentSpeedKmh: 0,
+          follow: true, // Follow bus movement
+          lastArrivedStopIndex: -1,
+          currentNextStopIndex: -1,
 
-      // ---------- UTILITIES ----------
-      const formatTime = (time) => {
-        if (!time) return 'N/A';
-        const [h, m] = time.split(':'); const hours = parseInt(h, 10);
-        return `${hours % 12 || 12}:${m} ${hours >= 12 ? 'PM' : 'AM'}`;
-      };
-      const parseTimeToDate = (hhmm) => {
-        if (!hhmm || !hhmm.includes(':')) return null;
-        const [h, m] = hhmm.split(':').map(Number);
-        const d = new Date();
-        d.setHours(h,m,0,0);
-        return d;
-      };
-      const formatClock = (d) => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: 'numeric', hour12: true });
-      const formatRelative = (min) => {
-        const a = Math.abs(Math.round(min));
-        if (a < 1) return 'a minute';
-        if (a < 60) return `${a} minutes`;
-        const h = Math.floor(a / 60);
-        if (h < 24) return `${h} hour${h>1?'s':''}`;
-        const days = Math.floor(h / 24);
-        return `${days} day${days>1?'s':''}`;
-      };
-      const km = m => m / 1000;
-      const mpsToKmh = ms => ms * 3.6;
+          fullRouteCoords: null, // LatLng[] from OSRM
+          cumRouteDist: null, // Cumulative distances per route point
+          totalRouteMeters: 0,
 
-      const calculateBearing = (start, end) => {
-        const toRad = d => d * Math.PI / 180, toDeg = r => r * 180 / Math.PI;
-        const y = Math.sin(toRad(end.lng - start.lng)) * Math.cos(toRad(end.lat));
-        const x = Math.cos(toRad(start.lat)) * Math.sin(toRad(end.lat)) - Math.sin(toRad(start.lat)) * Math.cos(toRad(end.lat)) * Math.cos(toRad(end.lng - start.lng));
-        return (toDeg(Math.atan2(y, x)) + 360) % 360;
-      };
+          stopSnaps: [], // [{point, index, cumDist}]
+          lastUpdateTs: 0,
+          liveState: "offline", // 'live' | 'stale' | 'offline'
+          stopsState: (busData.stops || []).map(() => ({
+            inside: false,
+            enteredAt: 0,
+            arrivedAt: 0,
+            departedAt: 0,
+          })),
+          tripStartedAt: 0,
+          lastSnapIndex: -1,
+          baseMapMode: localStorage.getItem("baseMapMode") || "auto", // auto|light|dark|satellite
+          theme: localStorage.getItem("theme") || "light",
+        };
 
-      function closestPointOnPolyline(targetLatLng, polylineLatLngs) {
-        let closest = { point: null, index: -1, pixelDist: Infinity };
-        if (!polylineLatLngs || !map || !targetLatLng) return closest;
-        const targetPt = map.latLngToLayerPoint(targetLatLng);
-        for (let i=0; i<polylineLatLngs.length - 1; i++) {
-          const p1 = map.latLngToLayerPoint(polylineLatLngs[i]);
-          const p2 = map.latLngToLayerPoint(polylineLatLngs[i+1]);
-          const cp = L.LineUtil.closestPointOnSegment(targetPt, p1, p2);
-          const d = targetPt.distanceTo(cp);
-          if (d < closest.pixelDist) {
-            closest.pixelDist = d;
-            closest.index = i;
-            closest.point = map.layerPointToLatLng(cp);
-          }
-        }
-        return closest;
-      }
+        const timers = {
+          uiIntervalId: null,
+          staleTimeoutId: null,
+        };
 
-      function computeCumulativeRouteDist(route) {
-        if (!route || route.length === 0) return { cum: [], total: 0 };
-        const cum = [0];
-        for (let i = 1; i < route.length; i++) {
-          const d = L.latLng(route[i-1]).distanceTo(L.latLng(route[i]));
-          cum[i] = cum[i-1] + d;
-        }
-        return { cum, total: cum[cum.length - 1] || 0 };
-      }
+        // ---------- MAP ----------
+        const initialLat =
+          busData.currentLocation?.lat || busData.stops?.[0]?.lat || 19.3149;
+        const initialLng =
+          busData.currentLocation?.lng || busData.stops?.[0]?.lng || 84.7941;
 
-      function cumDistAtSnap(snap) {
-        if (!snap || !tripState.cumRouteDist || snap.index < 0) return 0;
-        const base = tripState.cumRouteDist[snap.index] || 0;
-        const segStart = L.latLng(tripState.fullRouteCoords[snap.index]);
-        const partial = segStart.distanceTo(snap.point);
-        return base + partial;
-      }
+        const map = L.map("map", {
+          fullscreenControl: false,
+          zoomControl: false,
+        }).setView([initialLat, initialLng], 14);
+        // L.control.zoom({ position: 'bottomright' }).addTo(map);
+        // L.control.scale({ position: 'bottomleft', imperial: false }).addTo(map);
 
-      // ---------- STOP LIST ----------
-      function generateStopList() {
-        if (!busData.stops || busData.stops.length === 0) return;
-        const stopHtml = busData.stops.map((stop, index) => {
-          const isLast = index === busData.stops.length - 1;
-          return `
-            <div class="stop-item" data-stop-index="${index}" data-stop-lat="${stop.lat}" data-stop-lng="${stop.lng}" data-scheduled-time="${stop.scheduledTime || ''}">
-              ${!isLast ? '<div class="stop-connector"></div><div class="stop-connector-progress"></div>' : ''}
-              <div class="stop-dot">
-                <i class="fas fa-check text-base hidden"></i>
-                <span class="stop-number">${index + 1}</span>
-              </div>
-              <div class="ml-4">
-                <p class="font-bold text-primary stop-name">${stop.name}</p>
-                <p class="text-xs text-subtle">Scheduled: ${formatTime(stop.scheduledTime || '')}</p>
-                <div class="arrival-label text-sm text-green-600 font-semibold mt-1 hidden">Arrived: <span class="arrival-time"></span></div>
-                <div class="eta-details text-sm text-secondary mt-1 hidden">
-                  <span class="eta-label font-bold text-blue-600">Expected: <span class="eta-time"></span></span>
-                  (<span class="distance-value"></span> away)
-                </div>
-                <div class="delay-label text-sm mt-1 hidden">
-                  <span class="delay-status"></span>
-                </div>
-              </div>
-            </div>`;
-        }).join('');
-        dom.stopListContainers.forEach(container => container.innerHTML = stopHtml);
-
-        // Stop click: pan to stop
-        dom.stopListContainers.forEach(container => {
-          container.addEventListener('click', (e) => {
-            const stopItem = e.target.closest('.stop-item');
-            if (stopItem) {
-              const lat = parseFloat(stopItem.dataset.stopLat);
-              const lng = parseFloat(stopItem.dataset.stopLng);
-              map.panTo([lat, lng], { animate: true });
-              tripState.follow = false;
-              updateFollowUI();
+        // Base layers (free)
+        const tileLayers = {
+          light: L.tileLayer(
+            "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            {
+              attribution: "&copy; OpenStreetMap contributors",
             }
-          });
-        });
-      }
-
-      // ---------- OSRM ROUTING ----------
-      // Per-leg OSRM with sessionStorage cache (free public OSRM)
-      async function routeLeg(from, to) {
-        const key = `leg:${from.lat.toFixed(6)},${from.lng.toFixed(6)}->${to.lat.toFixed(6)},${to.lng.toFixed(6)}`;
-        const cached = sessionStorage.getItem(key);
-        if (cached) {
-          try { return JSON.parse(cached); } catch {}
-        }
-        const coords = `${from.lng},${from.lat};${to.lng},${to.lat}`;
-        const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false&alternatives=false&continue_straight=false&annotations=false&radiuses=50;50`;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`OSRM ${res.status}`);
-        const data = await res.json();
-        if (!data.routes || !data.routes[0]) throw new Error('No route for leg');
-        const r = data.routes[0];
-        const legLatLngs = r.geometry.coordinates.map(p => [p[1], p[0]]);
-        const leg = { coords: legLatLngs, distance: r.distance, duration: r.duration };
-        sessionStorage.setItem(key, JSON.stringify(leg));
-        return leg;
-      }
-      const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-      async function initializeRoute() {
-        if (!busData.stops || busData.stops.length < 2) return;
-
-        // Stop markers
-        busData.stops.forEach((stop, i) => {
-          const isFirst = i === 0, isLast = i === busData.stops.length - 1;
-          const iconHtml = isFirst
-            ? `<div class="map-marker-icon w-8 h-8 bg-green-500"><i class="fas fa-play text-sm"></i></div>`
-            : isLast
-            ? `<div class="map-marker-icon w-8 h-8 bg-gray-800"><i class="fas fa-flag-checkered text-sm"></i></div>`
-            : `<div class="map-marker-icon w-7 h-7 bg-gray-500 text-xs">${i + 1}</div>`;
-          L.marker([stop.lat, stop.lng], { icon: L.divIcon({ html: iconHtml, className: '' }), zIndexOffset: 500 })
-            .addTo(map).bindTooltip(stop.name, { permanent: false, direction: 'top' });
-        });
-
-        // Polylines
-        if (fullRoutePolyline) map.removeLayer(fullRoutePolyline);
-        fullRoutePolyline = L.polyline([], { color: '#8b5cf6', weight: 6, opacity: 0.9, dashArray: '8, 8' }).addTo(map);
-        if (!traveledRoutePolyline) {
-          traveledRoutePolyline = L.polyline([], { color: '#3b82f6', weight: 8 }).addTo(map);
-        }
-
-        // Try to restore from cache: full route across all stops
-        const routeKey = 'route:' + busData.stops.map(s => `${s.lat.toFixed(6)},${s.lng.toFixed(6)}`).join('|');
-        let cachedRoute = null;
-        try { cachedRoute = JSON.parse(sessionStorage.getItem(routeKey)); } catch {}
-
-        let aggregated = [];
-        let totalDistance = 0; // meters
-        let totalDuration = 0; // seconds
-
-        if (cachedRoute?.coords?.length) {
-          aggregated = cachedRoute.coords;
-          totalDistance = cachedRoute.totalDistance || 0;
-          totalDuration = cachedRoute.totalDuration || 0;
-          fullRoutePolyline.setLatLngs(aggregated);
-        } else {
-          // Build route leg-by-leg
-          for (let i = 0; i < busData.stops.length - 1; i++) {
-            const from = busData.stops[i], to = busData.stops[i+1];
-            try {
-              const leg = await routeLeg(from, to);
-              totalDistance += leg.distance; totalDuration += leg.duration;
-              if (aggregated.length === 0) aggregated.push(...leg.coords);
-              else aggregated.push(...leg.coords.slice(1));
-              fullRoutePolyline.setLatLngs(aggregated);
-            } catch (err) {
-              // Fallback straight segment
-              const a = L.latLng(from.lat, from.lng), b = L.latLng(to.lat, to.lng);
-              const d = a.distanceTo(b);
-              const dur = (d/1000)/AVERAGE_BUS_SPEED_KMPH*3600;
-              totalDistance += d; totalDuration += dur;
-              if (aggregated.length === 0) aggregated.push([from.lat, from.lng], [to.lat, to.lng]);
-              else aggregated.push([to.lat, to.lng]);
-              fullRoutePolyline.setLatLngs(aggregated);
-              console.warn('OSRM leg failed; used straight fallback:', err);
+          ),
+          dark: L.tileLayer(
+            "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+            {
+              attribution: "&copy; OpenStreetMap, &copy; CartoDB",
             }
-            await sleep(100);
-          }
-          sessionStorage.setItem(routeKey, JSON.stringify({
-            coords: aggregated,
-            totalDistance,
-            totalDuration
-          }));
-        }
-
-        // Fit map + compute cumulative
-        if (aggregated.length > 0) {
-          tripState.fullRouteCoords = aggregated;
-          fullRoutePolyline.setLatLngs(aggregated);
-          map.fitBounds(fullRoutePolyline.getBounds(), { padding: [50,50] });
-        } else {
-          const line = busData.stops.map(s => [s.lat, s.lng]);
-          tripState.fullRouteCoords = line;
-          fullRoutePolyline.setLatLngs(line);
-          map.fitBounds(fullRoutePolyline.getBounds(), { padding: [50,50] });
-        }
-
-        const { cum, total } = computeCumulativeRouteDist(tripState.fullRouteCoords);
-        tripState.cumRouteDist = cum;
-        tripState.totalRouteMeters = total;
-
-        // Snap stops to route once (for ETA and progress accuracy)
-        tripState.stopSnaps = busData.stops.map(s => {
-          const snap = closestPointOnPolyline(L.latLng(s.lat, s.lng), tripState.fullRouteCoords);
-          const cumDist = cumDistAtSnap(snap);
-          return { point: snap.point || L.latLng(s.lat, s.lng), index: snap.index, cumDist };
-        });
-
-        // Route summary
-        const totalKm = totalDistance ? totalDistance / 1000 : (total / 1000);
-const totalMinutes = Math.round(totalDuration ? (totalDuration / 60) : ((totalKm / AVERAGE_BUS_SPEED_KMPH) * 60));
-        dom.routeSummaryContainers.forEach(el => {
-          el.innerHTML = `<span><i class="fas fa-road"></i> ${totalKm.toFixed(1)} km</span> &bull; <span><i class="fas fa-clock"></i> ${totalMinutes} min trip</span>`;
-        });
-      }
-
-      // ---------- STATUS/UI ----------
-      function updateStatusUI(state) {
-        tripState.liveState = state;
-        const indicator = dom.statusIndicator, dot = dom.statusDot, text = dom.statusText;
-        if (!indicator || !dot || !text) return;
-
-        indicator.classList.remove('bg-green-100/80','text-green-600','bg-red-100/80','text-red-600','bg-yellow-100/80','text-yellow-600','is-live');
-        dot.classList.remove('bg-green-500','bg-red-500','bg-yellow-500');
-
-        if (state === 'live') {
-          text.textContent = 'LIVE';
-          indicator.classList.add('bg-green-100/80', 'text-green-600', 'is-live');
-          dot.classList.add('bg-green-500');
-          dom.recenterBtn?.classList.remove('hidden');
-          dom.summaryCard?.classList.remove('hidden');
-        } else if (state === 'stale') {
-          text.textContent = 'STALE';
-          indicator.classList.add('bg-yellow-100/80', 'text-yellow-600');
-          dot.classList.add('bg-yellow-500');
-          dom.recenterBtn?.classList.remove('hidden');
-          dom.summaryCard?.classList.remove('hidden');
-        } else {
-          text.textContent = 'OFFLINE';
-          indicator.classList.add('bg-red-100/80', 'text-red-600');
-          dot.classList.add('bg-red-500');
-          dom.recenterBtn?.classList.add('hidden');
-          dom.summaryCard?.classList.add('hidden');
-        }
-      }
-
-      function scheduleStaleCheck() {
-        clearTimeout(timers.staleTimeoutId);
-        timers.staleTimeoutId = setTimeout(() => {
-          if (Date.now() - tripState.lastUpdateTs >= LOCATION_STALE_MS) {
-            updateStatusUI('stale');
-            setSummarySpeed(0);
-          }
-        }, LOCATION_STALE_MS + 50);
-      }
-
-      function setSummarySpeed(kmh) {
-        tripState.currentSpeedKmh = Math.max(0, kmh || 0);
-        if (dom.summarySpeed) dom.summarySpeed.textContent = `${Math.round(tripState.currentSpeedKmh)} km/h`;
-      }
-
-      function updateFollowUI() {
-        const following = tripState.follow;
-        dom.followIcon?.classList.toggle('fa-person-walking', following);
-        dom.followIcon?.classList.toggle('fa-person-walking-dashed-line-arrow-right', !following);
-      }
-
-      // ---------- PROGRESS + ETA ----------
-      function updateProgressLine(busSnap) {
-        if (!traveledRoutePolyline || !tripState.fullRouteCoords || !busSnap || busSnap.index < 0) return;
-        const before = tripState.fullRouteCoords.slice(0, busSnap.index + 1);
-        before.push([busSnap.point.lat, busSnap.point.lng]);
-        traveledRoutePolyline.setLatLngs(before);
-
-        const cur = cumDistAtSnap(busSnap);
-        const ratio = tripState.totalRouteMeters > 0 ? (cur / tripState.totalRouteMeters) : 0;
-        if (dom.summaryProgressFill) dom.summaryProgressFill.style.width = `${Math.max(0, Math.min(100, ratio*100)).toFixed(1)}%`;
-      }
-
-      function determineLastArrivedStopIndex(busLatLng) {
-        // Update arrivals if bus is within threshold
-        let updatedIndex = tripState.lastArrivedStopIndex;
-        busData.stops.forEach((stop, i) => {
-          if (!tripState.arrivalTimes.has(i)) {
-            const d = L.latLng(stop.lat, stop.lng).distanceTo(busLatLng);
-            if (d <= ARRIVAL_THRESHOLD_METERS) {
-              tripState.arrivalTimes.set(i, formatClock(new Date()));
-              updatedIndex = Math.max(updatedIndex, i);
+          ),
+          satellite: L.tileLayer(
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            {
+              attribution:
+                "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
             }
-          }
-        });
-        tripState.lastArrivedStopIndex = updatedIndex;
-      }
+          ),
+        };
+        let currentBaseLayer = null;
 
-      function nextUpcomingStopIndex() {
-        for (let i = tripState.lastArrivedStopIndex + 1; i < busData.stops.length; i++) {
-          if (!tripState.arrivalTimes.has(i)) return i;
-        }
-        return -1;
-      }
+        function setBaseLayer(mode) {
+          // Keep selection stable in localStorage
+          tripState.baseMapMode = mode;
+          localStorage.setItem("baseMapMode", mode);
 
-      function updateStopListUI(busSnap) {
-        if (!busSnap || !busData.stops?.length || !tripState.cumRouteDist) return;
-        const containers = dom.stopListContainers;
-        if (!containers || containers.length === 0) return;
+          if (currentBaseLayer) map.removeLayer(currentBaseLayer);
+          const theme = tripState.theme;
 
-        const arrivedCount = tripState.arrivalTimes.size;
-        const nextIndex = nextUpcomingStopIndex();
-        const curCum = cumDistAtSnap(busSnap);
-
-        // Speed for ETA: prefer rolling average, fallback to AVERAGE_BUS_SPEED
-        const avgSpeed = tripState.recentSpeeds.length > 0
-          ? tripState.recentSpeeds.reduce((a,b) => a + b, 0) / tripState.recentSpeeds.length
-          : AVERAGE_BUS_SPEED_KMPH;
-        const speedForEtaKmh = Math.max(8, Math.min(AVERAGE_BUS_SPEED_KMPH * 1.2, avgSpeed || AVERAGE_BUS_SPEED_KMPH));
-        const speedMps = speedForEtaKmh / 3.6;
-
-        // Summary progress counter
-        if (arrivedCount >= busData.stops.length) {
-          dom.summaryNextStop && (dom.summaryNextStop.textContent = 'Trip Completed');
-          dom.summaryEta && (dom.summaryEta.textContent = '✔');
-          dom.summaryProgress && (dom.summaryProgress.textContent = `${busData.stops.length}/${busData.stops.length}`);
-        } else {
-          dom.summaryProgress && (dom.summaryProgress.textContent = `${Math.min(arrivedCount + 1, busData.stops.length)}/${busData.stops.length}`);
-        }
-
-        containers.forEach(container => {
-          const stopElements = container.querySelectorAll('.stop-item');
-          if (stopElements.length === 0) return;
-
-          // Reset all connectors
-          container.querySelectorAll('.stop-connector-progress').forEach(el => el.style.height = '0%');
-
-          let nextStopElForProgress = null;
-
-          stopElements.forEach(stopEl => {
-            const stopIndex = parseInt(stopEl.dataset.stopIndex);
-            const snap = tripState.stopSnaps[stopIndex];
-            const stopCum = snap?.cumDist ?? 0;
-            const stopLatLng = L.latLng(parseFloat(stopEl.dataset.stopLat), parseFloat(stopEl.dataset.stopLng));
-            const distToStopAlong = Math.max(0, stopCum - curCum);
-            const distToStopLinear = L.latLng(busSnap.point).distanceTo(stopLatLng);
-
-            // Clear state
-            stopEl.classList.remove('is-next', 'is-arrived', 'is-upcoming');
-            stopEl.querySelector('.eta-details')?.classList.add('hidden');
-            stopEl.querySelector('.arrival-label')?.classList.add('hidden');
-            stopEl.querySelector('.delay-label')?.classList.add('hidden');
-            stopEl.querySelector('.stop-dot .stop-number')?.classList.remove('hidden');
-            stopEl.querySelector('.stop-dot .fa-check')?.classList.add('hidden');
-
-            // Set arrival if within threshold by linear distance (more realistic near stop)
-            if (distToStopLinear < ARRIVAL_THRESHOLD_METERS && !tripState.arrivalTimes.has(stopIndex)) {
-              tripState.arrivalTimes.set(stopIndex, formatClock(new Date()));
-              tripState.lastArrivedStopIndex = Math.max(tripState.lastArrivedStopIndex, stopIndex);
-            }
-
-            if (tripState.arrivalTimes.has(stopIndex)) {
-              stopEl.classList.add('is-arrived');
-              const arrivalLabel = stopEl.querySelector('.arrival-label');
-              if (arrivalLabel) {
-                arrivalLabel.classList.remove('hidden');
-                arrivalLabel.querySelector('.arrival-time').textContent = tripState.arrivalTimes.get(stopIndex);
-              }
-              stopEl.querySelector('.stop-dot .stop-number')?.classList.add('hidden');
-              stopEl.querySelector('.stop-dot .fa-check')?.classList.remove('hidden');
-            } else {
-              stopEl.classList.add('is-upcoming');
-              // ETA using along-route distance
-              const etaSeconds = distToStopAlong / (speedMps || 0.001);
-              const etaTime = new Date(Date.now() + etaSeconds * 1000);
-              const formattedEta = formatClock(etaTime);
-
-              const etaDetails = stopEl.querySelector('.eta-details');
-              if (etaDetails) {
-                etaDetails.querySelector('.distance-value').textContent = `${km(distToStopAlong).toFixed(2)} km`;
-                etaDetails.querySelector('.eta-time').textContent = formattedEta;
-                etaDetails.classList.remove('hidden');
-              }
-
-              // Delay/Early vs scheduled
-              const scheduledStr = stopEl.dataset.scheduledTime;
-              const scheduledDate = parseTimeToDate(scheduledStr);
-              const delayLabel = stopEl.querySelector('.delay-label');
-              if (scheduledDate && delayLabel) {
-                const delayMinutes = Math.round((etaTime - scheduledDate) / 60000);
-                const statusSpan = delayLabel.querySelector('.delay-status');
-                if (Math.abs(delayMinutes) <= 2) {
-                  statusSpan.textContent = 'On Time';
-                  statusSpan.className = 'delay-status font-bold text-green-600';
-                } else if (delayMinutes > 2) {
-                  statusSpan.textContent = `Delayed by ${formatRelative(delayMinutes)}`;
-                  statusSpan.className = 'delay-status font-bold text-red-600';
-                } else {
-                  statusSpan.textContent = `Early by ${formatRelative(-delayMinutes)}`;
-                  statusSpan.className = 'delay-status font-bold text-yellow-600';
-                }
-                delayLabel.classList.remove('hidden');
-              }
-
-              // Next stop UI + summary
-              if (stopIndex === nextIndex) {
-                stopEl.classList.add('is-next');
-                nextStopElForProgress = stopEl;
-                if (dom.summaryNextStop) dom.summaryNextStop.textContent = stopEl.querySelector('.stop-name').textContent;
-                if (dom.summaryEta) dom.summaryEta.textContent = formattedEta;
-                if (dom.summaryToNext) dom.summaryToNext.textContent = `${km(distToStopAlong).toFixed(2)} km`;
-
-                // Smooth scroll when changed
-                if (tripState.currentNextStopIndex !== stopIndex && stopEl.offsetParent) {
-                  stopEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  tripState.currentNextStopIndex = stopIndex;
-                }
-              }
-            }
-          });
-
-          // Connector progress from last arrived to next upcoming
-          if (nextStopElForProgress && tripState.lastArrivedStopIndex > -1) {
-            const prevStopEl = container.querySelector(`[data-stop-index="${tripState.lastArrivedStopIndex}"]`);
-            if (prevStopEl) {
-              const prevSnap = tripState.stopSnaps[tripState.lastArrivedStopIndex];
-              const nextSnap = tripState.stopSnaps[parseInt(nextStopElForProgress.dataset.stopIndex)];
-              const totalSeg = Math.max(1, (nextSnap.cumDist - prevSnap.cumDist));
-              const coveredSeg = Math.max(0, Math.min(totalSeg, curCum - prevSnap.cumDist));
-              const p = (coveredSeg / totalSeg) * 100;
-              const progressConnector = prevStopEl.querySelector('.stop-connector-progress');
-              if (progressConnector) progressConnector.style.height = `${p.toFixed(1)}%`;
-            }
-          }
-        });
-      }
-
-      // ---------- LOCATION UPDATES ----------
-      function processLocationUpdate(coords) {
-        if (!coords || typeof coords.lat !== 'number' || typeof coords.lng !== 'number') return;
-
-        const endLatLng = L.latLng(coords.lat, coords.lng);
-        let currentSpeed = 0, bearing = tripState.lastLocation?.bearing || 0;
-        let dt = 0;
-
-        if (tripState.lastLocation) {
-          const dist = endLatLng.distanceTo(tripState.lastLocation.latlng);
-          dt = (Date.now() - tripState.lastLocation.timestamp) / 1000;
-          if (dt > MIN_VALID_TIME_SEC && dist > MIN_VALID_MOVE_METERS) {
-            currentSpeed = mpsToKmh(dist / dt);
-            bearing = calculateBearing(tripState.lastLocation.latlng, endLatLng);
-            if (currentSpeed < MAX_REALISTIC_SPEED_KMPH) {
-              tripState.recentSpeeds.push(currentSpeed);
-              if (tripState.recentSpeeds.length > ROLLING_AVERAGE_SAMPLES) tripState.recentSpeeds.shift();
-            }
+          if (mode === "auto") {
+            currentBaseLayer =
+              theme === "dark" ? tileLayers.dark : tileLayers.light;
+          } else if (mode === "light") {
+            currentBaseLayer = tileLayers.light;
+          } else if (mode === "dark") {
+            currentBaseLayer = tileLayers.dark;
+          } else if (mode === "satellite") {
+            currentBaseLayer = tileLayers.satellite;
           } else {
-            currentSpeed = 0;
+            currentBaseLayer = tileLayers.light;
+          }
+          currentBaseLayer.addTo(map);
+          updateLayerMenuUI();
+        }
+
+        // Theme
+        function applyTheme(theme) {
+          tripState.theme = theme;
+          localStorage.setItem("theme", theme);
+          if (theme === "dark") {
+            document.body.classList.add("dark-mode");
+            dom.darkModeIcon?.classList.replace("fa-moon", "fa-sun");
+          } else {
+            document.body.classList.remove("dark-mode");
+            dom.darkModeIcon?.classList.replace("fa-sun", "fa-moon");
+          }
+          // If auto basemap, adjust with theme
+          if (tripState.baseMapMode === "auto") setBaseLayer("auto");
+        }
+        function toggleTheme() {
+          const newTheme = document.body.classList.contains("dark-mode")
+            ? "light"
+            : "dark";
+          applyTheme(newTheme);
+        }
+
+        function updateLayerMenuUI() {
+          if (!dom.layersMenu) return;
+          const items = dom.layersMenu.querySelectorAll(".menu-item");
+          items.forEach((item) => {
+            const mode = item.getAttribute("data-style");
+            const sel = item.querySelector(".sel-ind");
+            const unsel = item.querySelector(".unsel-ind");
+            const isSel = mode === tripState.baseMapMode;
+            if (sel && unsel) {
+              sel.classList.toggle("hidden", !isSel);
+              unsel.classList.toggle("hidden", isSel);
+            }
+          });
+        }
+
+        // Apply theme + base layer at startup
+        applyTheme(tripState.theme);
+        setBaseLayer(tripState.baseMapMode);
+
+        // Marker + polylines
+        const busIcon = L.divIcon({
+          html: `<img src="/bus-school.png" class="bus-icon-rotated" style="width:40px;height:40px;">`,
+          className: "",
+          iconSize: [40, 40],
+          iconAnchor: [20, 20],
+        });
+        let busMarker = null;
+        let fullRoutePolyline = null;
+        let traveledRoutePolyline = null;
+
+        // Smooth marker animation
+        const animation = {
+          reqId: null,
+          active: false,
+          start: null,
+          end: null,
+          startTs: 0,
+          duration: 1000,
+        };
+        function lerp(a, b, t) {
+          return a + (b - a) * t;
+        }
+        function animateBus(toLatLng, durationMs = 1000) {
+          if (!busMarker) {
+            busMarker = L.marker(toLatLng, {
+              icon: busIcon,
+              zIndexOffset: 1000,
+            }).addTo(map);
+            return;
+          }
+          if (animation.reqId) cancelAnimationFrame(animation.reqId);
+          animation.active = true;
+          animation.start = busMarker.getLatLng();
+          animation.end = toLatLng;
+          animation.startTs = performance.now();
+          animation.duration = Math.max(200, Math.min(2000, durationMs));
+
+          const step = (ts) => {
+            const t = Math.min(
+              1,
+              (ts - animation.startTs) / animation.duration
+            );
+            const lat = lerp(animation.start.lat, animation.end.lat, t);
+            const lng = lerp(animation.start.lng, animation.end.lng, t);
+            busMarker.setLatLng([lat, lng]);
+            if (t < 1 && animation.active) {
+              animation.reqId = requestAnimationFrame(step);
+            } else {
+              animation.active = false;
+            }
+          };
+          animation.reqId = requestAnimationFrame(step);
+        }
+
+        function rotateBusMarker(bearingDeg) {
+          if (!busMarker) return;
+          const el = busMarker.getElement();
+          if (!el) {
+            requestAnimationFrame(() => rotateBusMarker(bearingDeg));
+            return;
+          }
+          const img = el.querySelector(".bus-icon-rotated");
+          if (img) img.style.transform = `rotate(${bearingDeg}deg)`;
+        }
+
+        // ---------- UTILITIES ----------
+        const formatTime = (time) => {
+          if (!time) return "N/A";
+          const [h, m] = time.split(":");
+          const hours = parseInt(h, 10);
+          return `${hours % 12 || 12}:${m} ${hours >= 12 ? "PM" : "AM"}`;
+        };
+        const parseTimeToDate = (hhmm) => {
+          if (!hhmm || !hhmm.includes(":")) return null;
+          const [h, m] = hhmm.split(":").map(Number);
+          const d = new Date();
+          d.setHours(h, m, 0, 0);
+          return d;
+        };
+        const formatClock = (d) =>
+          d.toLocaleTimeString("en-US", {
+            hour: "numeric",
+            minute: "numeric",
+            hour12: true,
+          });
+        const formatRelative = (min) => {
+          const a = Math.abs(Math.round(min));
+          if (a < 1) return "a minute";
+          if (a < 60) return `${a} minutes`;
+          const h = Math.floor(a / 60);
+          if (h < 24) return `${h} hour${h > 1 ? "s" : ""}`;
+          const days = Math.floor(h / 24);
+          return `${days} day${days > 1 ? "s" : ""}`;
+        };
+        const km = (m) => m / 1000;
+        const mpsToKmh = (ms) => ms * 3.6;
+
+        const calculateBearing = (start, end) => {
+          const toRad = (d) => (d * Math.PI) / 180,
+            toDeg = (r) => (r * 180) / Math.PI;
+          const y =
+            Math.sin(toRad(end.lng - start.lng)) * Math.cos(toRad(end.lat));
+          const x =
+            Math.cos(toRad(start.lat)) * Math.sin(toRad(end.lat)) -
+            Math.sin(toRad(start.lat)) *
+              Math.cos(toRad(end.lat)) *
+              Math.cos(toRad(end.lng - start.lng));
+          return (toDeg(Math.atan2(y, x)) + 360) % 360;
+        };
+
+        function closestPointOnPolyline(targetLatLng, polylineLatLngs) {
+          let closest = { point: null, index: -1, pixelDist: Infinity };
+          if (!polylineLatLngs || !map || !targetLatLng) return closest;
+          const targetPt = map.latLngToLayerPoint(targetLatLng);
+          for (let i = 0; i < polylineLatLngs.length - 1; i++) {
+            const p1 = map.latLngToLayerPoint(polylineLatLngs[i]);
+            const p2 = map.latLngToLayerPoint(polylineLatLngs[i + 1]);
+            const cp = L.LineUtil.closestPointOnSegment(targetPt, p1, p2);
+            const d = targetPt.distanceTo(cp);
+            if (d < closest.pixelDist) {
+              closest.pixelDist = d;
+              closest.index = i;
+              closest.point = map.layerPointToLatLng(cp);
+            }
+          }
+          return closest;
+        }
+
+        function computeCumulativeRouteDist(route) {
+          if (!route || route.length === 0) return { cum: [], total: 0 };
+          const cum = [0];
+          for (let i = 1; i < route.length; i++) {
+            const d = L.latLng(route[i - 1]).distanceTo(L.latLng(route[i]));
+            cum[i] = cum[i - 1] + d;
+          }
+          return { cum, total: cum[cum.length - 1] || 0 };
+        }
+
+        function cumDistAtSnap(snap) {
+          if (!snap || !tripState.cumRouteDist || snap.index < 0) return 0;
+          const base = tripState.cumRouteDist[snap.index] || 0;
+          const segStart = L.latLng(tripState.fullRouteCoords[snap.index]);
+          const partial = segStart.distanceTo(snap.point);
+          return base + partial;
+        }
+        const parseTimeToDateNormalized = (hhmm, ref = new Date()) => {
+          if (!hhmm || !hhmm.includes(":")) return null;
+          const [h, m] = hhmm.split(":").map(Number);
+          const d = new Date(ref);
+          d.setHours(h, m, 0, 0);
+          // If this time is >6h in the past, assume schedule refers to the next day
+          if (d.getTime() < ref.getTime() - 6 * 60 * 60 * 1000)
+            d.setDate(d.getDate() + 1);
+          return d;
+        };
+        // ---------- STOP LIST ----------
+        function generateStopList() {
+          if (!busData.stops || busData.stops.length === 0) return;
+          const stopHtml = busData.stops
+            .map((stop, index) => {
+              const isLast = index === busData.stops.length - 1;
+              const isFirst = index === 0;
+              return `
+      <div class="stop-item" data-stop-index="${index}" data-stop-lat="${
+                stop.lat
+              }" data-stop-lng="${stop.lng}" data-scheduled-time="${
+                stop.scheduledTime || ""
+              }">
+        ${
+          !isLast
+            ? '<div class="stop-connector"></div><div class="stop-connector-progress"></div>'
+            : ""
+        }
+        <div class="stop-dot">
+          <i class="fas fa-check text-base hidden"></i>
+          <span class="stop-number">${index + 1}</span>
+        </div>
+        <div class="ml-4">
+          <p class="font-bold text-primary stop-name">${stop.name}</p>
+          <p class="text-xs text-subtle">Scheduled: ${formatTime(
+            stop.scheduledTime || ""
+          )}</p>
+
+          ${
+            isFirst
+              ? `
+            <div class="start-label text-sm text-green-600 font-semibold mt-1 hidden">
+              Started: <span class="start-time"></span>
+            </div>`
+              : ""
+          }
+
+          <div class="arrival-label text-sm text-green-600 font-semibold mt-1 hidden">
+            Arrived: <span class="arrival-time"></span>
+          </div>
+          <div class="eta-details text-sm text-secondary mt-1 hidden">
+            <span class="eta-label font-bold text-blue-600">Expected: <span class="eta-time"></span></span>
+            (<span class="distance-value"></span> away)
+          </div>
+          <div class="delay-label text-sm mt-1 hidden">
+            <span class="delay-status"></span>
+          </div>
+        </div>
+      </div>`;
+            })
+            .join("");
+          dom.stopListContainers.forEach(
+            (container) => (container.innerHTML = stopHtml)
+          );
+
+          // Stop click: pan to stop
+          dom.stopListContainers.forEach((container) => {
+            container.addEventListener("click", (e) => {
+              const stopItem = e.target.closest(".stop-item");
+              if (stopItem) {
+                const lat = parseFloat(stopItem.dataset.stopLat);
+                const lng = parseFloat(stopItem.dataset.stopLng);
+                map.panTo([lat, lng], { animate: true });
+                tripState.follow = false;
+                updateFollowUI();
+              }
+            });
+          });
+        }
+        function updateStopArrivalDeparture(busLatLng, speedKmh) {
+          if (!busData.stops?.length) return;
+          const now = Date.now();
+
+          busData.stops.forEach((stop, i) => {
+            const s = tripState.stopsState[i];
+            const stopLatLng = L.latLng(stop.lat, stop.lng);
+            const d = busLatLng.distanceTo(stopLatLng);
+
+            // Enter geofence
+            if (d <= STOP_GEOFENCE_M) {
+              if (!s.inside) {
+                s.inside = true;
+                s.enteredAt = now;
+              }
+              // Arrived (if not already): either stopped/slow OR dwelled enough
+              if (
+                !s.arrivedAt &&
+                (speedKmh <= STOP_SPEED_ARRIVE_KMH ||
+                  now - s.enteredAt >= STOP_DWELL_SEC * 1000)
+              ) {
+                s.arrivedAt = now;
+                // For the first stop we usually care about "Started" on departure, but we still mark it as completed for progress.
+                tripState.arrivalTimes.set(
+                  i,
+                  formatClock(new Date(s.arrivedAt))
+                );
+                tripState.lastArrivedStopIndex = Math.max(
+                  tripState.lastArrivedStopIndex,
+                  i
+                );
+              }
+            }
+
+            // Exit geofence (hysteresis)
+            if (d >= STOP_GEOFENCE_OUT_M && s.inside) {
+              s.inside = false;
+              s.departedAt = now;
+
+              // Mark "Started" when leaving the first stop
+              if (i === 0 && !tripState.tripStartedAt) {
+                tripState.tripStartedAt = s.departedAt;
+                // Count first stop as done for progress (if not already)
+                if (!tripState.arrivalTimes.has(0)) {
+                  tripState.arrivalTimes.set(
+                    0,
+                    formatClock(new Date(s.departedAt))
+                  );
+                }
+                tripState.lastArrivedStopIndex = Math.max(
+                  tripState.lastArrivedStopIndex,
+                  0
+                );
+              }
+            }
+          });
+        }
+
+        // ---------- OSRM ROUTING ----------
+        // Per-leg OSRM with sessionStorage cache (free public OSRM)
+        async function routeLeg(from, to) {
+          const key = `leg:${from.lat.toFixed(6)},${from.lng.toFixed(
+            6
+          )}->${to.lat.toFixed(6)},${to.lng.toFixed(6)}`;
+          const cached = sessionStorage.getItem(key);
+          if (cached) {
+            try {
+              return JSON.parse(cached);
+            } catch {}
+          }
+          const coords = `${from.lng},${from.lat};${to.lng},${to.lat}`;
+          const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false&alternatives=false&continue_straight=false&annotations=false&radiuses=50;50`;
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(`OSRM ${res.status}`);
+          const data = await res.json();
+          if (!data.routes || !data.routes[0])
+            throw new Error("No route for leg");
+          const r = data.routes[0];
+          const legLatLngs = r.geometry.coordinates.map((p) => [p[1], p[0]]);
+          const leg = {
+            coords: legLatLngs,
+            distance: r.distance,
+            duration: r.duration,
+          };
+          sessionStorage.setItem(key, JSON.stringify(leg));
+          return leg;
+        }
+        const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+        async function initializeRoute() {
+          if (!busData.stops || busData.stops.length < 2) return;
+
+          // Stop markers
+          busData.stops.forEach((stop, i) => {
+            const isFirst = i === 0,
+              isLast = i === busData.stops.length - 1;
+            const iconHtml = isFirst
+              ? `<div class="map-marker-icon w-8 h-8 bg-green-500"><i class="fas fa-play text-sm"></i></div>`
+              : isLast
+              ? `<div class="map-marker-icon w-8 h-8 bg-gray-800"><i class="fas fa-flag-checkered text-sm"></i></div>`
+              : `<div class="map-marker-icon w-7 h-7 bg-gray-500 text-xs">${
+                  i + 1
+                }</div>`;
+            L.marker([stop.lat, stop.lng], {
+              icon: L.divIcon({ html: iconHtml, className: "" }),
+              zIndexOffset: 500,
+            })
+              .addTo(map)
+              .bindTooltip(stop.name, { permanent: false, direction: "top" });
+          });
+
+          // Polylines
+          if (fullRoutePolyline) map.removeLayer(fullRoutePolyline);
+          fullRoutePolyline = L.polyline([], {
+            color: "#8b5cf6",
+            weight: 6,
+            opacity: 0.9,
+            dashArray: "8, 8",
+          }).addTo(map);
+          if (!traveledRoutePolyline) {
+            traveledRoutePolyline = L.polyline([], {
+              color: "#3b82f6",
+              weight: 8,
+            }).addTo(map);
+          }
+
+          // Try to restore from cache: full route across all stops
+          const routeKey =
+            "route:" +
+            busData.stops
+              .map((s) => `${s.lat.toFixed(6)},${s.lng.toFixed(6)}`)
+              .join("|");
+          let cachedRoute = null;
+          try {
+            cachedRoute = JSON.parse(sessionStorage.getItem(routeKey));
+          } catch {}
+
+          let aggregated = [];
+          let totalDistance = 0; // meters
+          let totalDuration = 0; // seconds
+
+          if (cachedRoute?.coords?.length) {
+            aggregated = cachedRoute.coords;
+            totalDistance = cachedRoute.totalDistance || 0;
+            totalDuration = cachedRoute.totalDuration || 0;
+            fullRoutePolyline.setLatLngs(aggregated);
+          } else {
+            // Build route leg-by-leg
+            for (let i = 0; i < busData.stops.length - 1; i++) {
+              const from = busData.stops[i],
+                to = busData.stops[i + 1];
+              try {
+                const leg = await routeLeg(from, to);
+                totalDistance += leg.distance;
+                totalDuration += leg.duration;
+                if (aggregated.length === 0) aggregated.push(...leg.coords);
+                else aggregated.push(...leg.coords.slice(1));
+                fullRoutePolyline.setLatLngs(aggregated);
+              } catch (err) {
+                // Fallback straight segment
+                const a = L.latLng(from.lat, from.lng),
+                  b = L.latLng(to.lat, to.lng);
+                const d = a.distanceTo(b);
+                const dur = (d / 1000 / AVERAGE_BUS_SPEED_KMPH) * 3600;
+                totalDistance += d;
+                totalDuration += dur;
+                if (aggregated.length === 0)
+                  aggregated.push([from.lat, from.lng], [to.lat, to.lng]);
+                else aggregated.push([to.lat, to.lng]);
+                fullRoutePolyline.setLatLngs(aggregated);
+                console.warn("OSRM leg failed; used straight fallback:", err);
+              }
+              await sleep(100);
+            }
+            sessionStorage.setItem(
+              routeKey,
+              JSON.stringify({
+                coords: aggregated,
+                totalDistance,
+                totalDuration,
+              })
+            );
+          }
+
+          // Fit map + compute cumulative
+          if (aggregated.length > 0) {
+            tripState.fullRouteCoords = aggregated;
+            fullRoutePolyline.setLatLngs(aggregated);
+            map.fitBounds(fullRoutePolyline.getBounds(), { padding: [50, 50] });
+          } else {
+            const line = busData.stops.map((s) => [s.lat, s.lng]);
+            tripState.fullRouteCoords = line;
+            fullRoutePolyline.setLatLngs(line);
+            map.fitBounds(fullRoutePolyline.getBounds(), { padding: [50, 50] });
+          }
+
+          const { cum, total } = computeCumulativeRouteDist(
+            tripState.fullRouteCoords
+          );
+          tripState.cumRouteDist = cum;
+          tripState.totalRouteMeters = total;
+
+          // Snap stops to route once (for ETA and progress accuracy)
+          tripState.stopSnaps = busData.stops.map((s) => {
+            const snap = closestPointOnPolyline(
+              L.latLng(s.lat, s.lng),
+              tripState.fullRouteCoords
+            );
+            const cumDist = cumDistAtSnap(snap);
+            return {
+              point: snap.point || L.latLng(s.lat, s.lng),
+              index: snap.index,
+              cumDist,
+            };
+          });
+
+          // Route summary
+          const totalKm = totalDistance ? totalDistance / 1000 : total / 1000;
+          const totalMinutes = Math.round(
+            totalDuration
+              ? totalDuration / 60
+              : (totalKm / AVERAGE_BUS_SPEED_KMPH) * 60
+          );
+          dom.routeSummaryContainers.forEach((el) => {
+            el.innerHTML = `<span><i class="fas fa-road"></i> ${totalKm.toFixed(
+              1
+            )} km</span> &bull; <span><i class="fas fa-clock"></i> ${totalMinutes} min trip</span>`;
+          });
+        }
+
+        // ---------- STATUS/UI ----------
+        function updateStatusUI(state) {
+          tripState.liveState = state;
+          const indicator = dom.statusIndicator,
+            dot = dom.statusDot,
+            text = dom.statusText;
+          if (!indicator || !dot || !text) return;
+
+          indicator.classList.remove(
+            "bg-green-100/80",
+            "text-green-600",
+            "bg-red-100/80",
+            "text-red-600",
+            "bg-yellow-100/80",
+            "text-yellow-600",
+            "is-live"
+          );
+          dot.classList.remove("bg-green-500", "bg-red-500", "bg-yellow-500");
+
+          if (state === "live") {
+            text.textContent = "LIVE";
+            indicator.classList.add(
+              "bg-green-100/80",
+              "text-green-600",
+              "is-live"
+            );
+            dot.classList.add("bg-green-500");
+            dom.recenterBtn?.classList.remove("hidden");
+            dom.summaryCard?.classList.remove("hidden");
+          } else if (state === "stale") {
+            text.textContent = "STALE";
+            indicator.classList.add("bg-yellow-100/80", "text-yellow-600");
+            dot.classList.add("bg-yellow-500");
+            dom.recenterBtn?.classList.remove("hidden");
+            dom.summaryCard?.classList.remove("hidden");
+          } else {
+            text.textContent = "OFFLINE";
+            indicator.classList.add("bg-red-100/80", "text-red-600");
+            dot.classList.add("bg-red-500");
+            dom.recenterBtn?.classList.add("hidden");
+            dom.summaryCard?.classList.add("hidden");
           }
         }
 
-        // Animate marker
-        const animMs = Math.min(2000, Math.max(300, dt * 1000 || 800));
-        animateBus(endLatLng, animMs);
-        rotateBusMarker(bearing);
-
-        tripState.lastLocation = { latlng: endLatLng, timestamp: Date.now(), bearing };
-        tripState.lastUpdateTs = Date.now();
-        setSummarySpeed(currentSpeed);
-        updateStatusUI('live');
-
-        if (tripState.follow && !animation.active) {
-          map.panTo(endLatLng, { animate: true });
+        function scheduleStaleCheck() {
+          clearTimeout(timers.staleTimeoutId);
+          timers.staleTimeoutId = setTimeout(() => {
+            if (Date.now() - tripState.lastUpdateTs >= LOCATION_STALE_MS) {
+              updateStatusUI("stale");
+              setSummarySpeed(0);
+            }
+          }, LOCATION_STALE_MS + 50);
         }
 
-        // Arrivals
-        determineLastArrivedStopIndex(endLatLng);
-
-        // Progress + ETA with snap to route
-        let busSnap = null;
-        if (tripState.fullRouteCoords?.length) {
-          const snap = closestPointOnPolyline(endLatLng, tripState.fullRouteCoords);
-          busSnap = { point: snap.point || endLatLng, index: snap.index };
-        } else {
-          busSnap = { point: endLatLng, index: -1 };
+        function setSummarySpeed(kmh) {
+          tripState.currentSpeedKmh = Math.max(0, kmh || 0);
+          if (dom.summarySpeed)
+            dom.summarySpeed.textContent = `${Math.round(
+              tripState.currentSpeedKmh
+            )} km/h`;
         }
 
-        updateProgressLine(busSnap);
-        updateStopListUI(busSnap);
+        function updateFollowUI() {
+          const following = tripState.follow;
+          dom.followIcon?.classList.toggle("fa-person-walking", following);
+          dom.followIcon?.classList.toggle(
+            "fa-person-walking-dashed-line-arrow-right",
+            !following
+          );
+        }
 
-        // refresh stale timer
-        scheduleStaleCheck();
-      }
+        // ---------- PROGRESS + ETA ----------
+        function updateProgressLine(busSnap) {
+          if (
+            !traveledRoutePolyline ||
+            !tripState.fullRouteCoords ||
+            !busSnap ||
+            busSnap.index < 0
+          )
+            return;
+          const before = tripState.fullRouteCoords.slice(0, busSnap.index + 1);
+          before.push([busSnap.point.lat, busSnap.point.lng]);
+          traveledRoutePolyline.setLatLngs(before);
 
-      // ---------- EVENTS ----------
-      // Buttons
-      dom.recenterBtn?.addEventListener('click', () => {
-        if (busMarker) map.flyTo(busMarker.getLatLng(), Math.max(map.getZoom(), 16), { animate: true });
-        tripState.follow = true;
-        updateFollowUI();
-      });
+          const cur = cumDistAtSnap(busSnap);
+          const ratio =
+            tripState.totalRouteMeters > 0
+              ? cur / tripState.totalRouteMeters
+              : 0;
+          if (dom.summaryProgressFill)
+            dom.summaryProgressFill.style.width = `${Math.max(
+              0,
+              Math.min(100, ratio * 100)
+            ).toFixed(1)}%`;
+        }
 
-      dom.followBtn?.addEventListener('click', () => {
-        tripState.follow = !tripState.follow;
-        updateFollowUI();
-        if (tripState.follow && busMarker) map.flyTo(busMarker.getLatLng(), Math.max(map.getZoom(), 16));
-      });
+        function determineLastArrivedStopIndex(busLatLng) {
+          // Update arrivals if bus is within threshold
+          let updatedIndex = tripState.lastArrivedStopIndex;
+          busData.stops.forEach((stop, i) => {
+            if (!tripState.arrivalTimes.has(i)) {
+              const d = L.latLng(stop.lat, stop.lng).distanceTo(busLatLng);
+              if (d <= ARRIVAL_THRESHOLD_METERS) {
+                tripState.arrivalTimes.set(i, formatClock(new Date()));
+                updatedIndex = Math.max(updatedIndex, i);
+              }
+            }
+          });
+          tripState.lastArrivedStopIndex = updatedIndex;
+        }
 
-      map.on('dragstart', () => { tripState.follow = false; updateFollowUI(); });
+        function nextUpcomingStopIndex() {
+          for (
+            let i = tripState.lastArrivedStopIndex + 1;
+            i < busData.stops.length;
+            i++
+          ) {
+            if (!tripState.arrivalTimes.has(i)) return i;
+          }
+          return -1;
+        }
+        function updateStopListUI(busSnap) {
+          if (!busSnap || !busData.stops?.length || !tripState.cumRouteDist)
+            return;
+          const containers = dom.stopListContainers;
+          if (!containers || containers.length === 0) return;
 
-      dom.mylocBtn?.addEventListener('click', () => {
-        map.locate({ setView: true, maxZoom: 16, enableHighAccuracy: true });
-      });
+          const arrivedCount = tripState.arrivalTimes.size;
+          const nextIndex = nextUpcomingStopIndex();
+          const curCum = cumDistAtSnap(busSnap);
 
-      dom.darkModeBtn?.addEventListener('click', toggleTheme);
-      dom.fullscreenBtn?.addEventListener('click', () => { if (map.toggleFullscreen) map.toggleFullscreen(); });
+          // Speed for ETA: prefer rolling average
+          const avgSpeed =
+            tripState.recentSpeeds.length > 0
+              ? tripState.recentSpeeds.reduce((a, b) => a + b, 0) /
+                tripState.recentSpeeds.length
+              : AVERAGE_BUS_SPEED_KMPH;
+          const speedForEtaKmh = Math.max(
+            8,
+            Math.min(
+              AVERAGE_BUS_SPEED_KMPH * 1.2,
+              avgSpeed || AVERAGE_BUS_SPEED_KMPH
+            )
+          );
+          const speedMps = speedForEtaKmh / 3.6;
 
-      // Layers menu open/close
-      function toggleLayersMenu(forceState) {
-        if (!dom.layersMenu) return;
-        const show = forceState ?? !dom.layersMenu.classList.contains('show');
-        dom.layersMenu.classList.toggle('show', show);
-      }
-      dom.layersBtn?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        toggleLayersMenu();
-      });
-      document.addEventListener('click', (e) => {
-        if (!dom.layersMenu?.contains(e.target) && e.target !== dom.layersBtn) toggleLayersMenu(false);
-      });
-      dom.layersMenu?.querySelectorAll('.menu-item').forEach(item => {
-        item.addEventListener('click', () => {
-          const mode = item.getAttribute('data-style');
-          setBaseLayer(mode);
-          toggleLayersMenu(false);
+          // Summary progress
+          if (arrivedCount >= busData.stops.length) {
+            dom.summaryNextStop &&
+              (dom.summaryNextStop.textContent = "Trip Completed");
+            dom.summaryEta && (dom.summaryEta.textContent = "✔");
+            dom.summaryProgress &&
+              (dom.summaryProgress.textContent = `${busData.stops.length}/${busData.stops.length}`);
+          } else {
+            dom.summaryProgress &&
+              (dom.summaryProgress.textContent = `${Math.min(
+                arrivedCount + 1,
+                busData.stops.length
+              )}/${busData.stops.length}`);
+          }
+
+          containers.forEach((container) => {
+            const stopElements = container.querySelectorAll(".stop-item");
+            if (stopElements.length === 0) return;
+
+            container
+              .querySelectorAll(".stop-connector-progress")
+              .forEach((el) => (el.style.height = "0%"));
+
+            let nextStopElForProgress = null;
+
+            stopElements.forEach((stopEl) => {
+              const stopIndex = parseInt(stopEl.dataset.stopIndex);
+              const snap = tripState.stopSnaps[stopIndex];
+              const stopCum = snap?.cumDist ?? 0;
+              const stopLatLng = L.latLng(
+                parseFloat(stopEl.dataset.stopLat),
+                parseFloat(stopEl.dataset.stopLng)
+              );
+              const distToStopAlong = Math.max(0, stopCum - curCum);
+
+              // Reset state
+              stopEl.classList.remove("is-next", "is-arrived", "is-upcoming");
+              stopEl.querySelector(".eta-details")?.classList.add("hidden");
+              stopEl.querySelector(".arrival-label")?.classList.add("hidden");
+              stopEl.querySelector(".delay-label")?.classList.add("hidden");
+              stopEl.querySelector(".start-label")?.classList.add("hidden");
+              stopEl
+                .querySelector(".stop-dot .stop-number")
+                ?.classList.remove("hidden");
+              stopEl
+                .querySelector(".stop-dot .fa-check")
+                ?.classList.add("hidden");
+
+              const s = tripState.stopsState[stopIndex];
+
+              if (tripState.arrivalTimes.has(stopIndex)) {
+                // Mark finished
+                stopEl.classList.add("is-arrived");
+                stopEl
+                  .querySelector(".stop-dot .stop-number")
+                  ?.classList.add("hidden");
+                stopEl
+                  .querySelector(".stop-dot .fa-check")
+                  ?.classList.remove("hidden");
+
+                if (stopIndex === 0) {
+                  // First stop: show "Started"
+                  const t = tripState.tripStartedAt
+                    ? formatClock(new Date(tripState.tripStartedAt))
+                    : tripState.arrivalTimes.get(0);
+                  const startLabel = stopEl.querySelector(".start-label");
+                  if (startLabel) {
+                    startLabel.querySelector(".start-time").textContent = t;
+                    startLabel.classList.remove("hidden");
+                  }
+                } else {
+                  const arrivalLabel = stopEl.querySelector(".arrival-label");
+                  if (arrivalLabel) {
+                    arrivalLabel.classList.remove("hidden");
+                    arrivalLabel.querySelector(".arrival-time").textContent =
+                      tripState.arrivalTimes.get(stopIndex);
+                  }
+                }
+              } else {
+                // Upcoming: show ETA
+                stopEl.classList.add("is-upcoming");
+
+                const etaSeconds = distToStopAlong / (speedMps || 0.001);
+                const etaTime = new Date(Date.now() + etaSeconds * 1000);
+                const formattedEta = formatClock(etaTime);
+
+                const etaDetails = stopEl.querySelector(".eta-details");
+                if (etaDetails) {
+                  etaDetails.querySelector(
+                    ".distance-value"
+                  ).textContent = `${km(distToStopAlong).toFixed(2)} km`;
+                  etaDetails.querySelector(".eta-time").textContent =
+                    formattedEta;
+                  etaDetails.classList.remove("hidden");
+                }
+
+                // Delay/Early vs scheduled (normalized to today/next day)
+                const scheduledStr = stopEl.dataset.scheduledTime;
+                const scheduledDate = parseTimeToDateNormalized(
+                  scheduledStr,
+                  new Date()
+                );
+                const delayLabel = stopEl.querySelector(".delay-label");
+                if (scheduledDate && delayLabel) {
+                  const delayMinutes = Math.round(
+                    (etaTime - scheduledDate) / 60000
+                  );
+                  const statusSpan = delayLabel.querySelector(".delay-status");
+                  if (Math.abs(delayMinutes) <= 2) {
+                    statusSpan.textContent = "On Time";
+                    statusSpan.className =
+                      "delay-status font-bold text-green-600";
+                  } else if (delayMinutes > 2) {
+                    statusSpan.textContent = `Delayed by ${formatRelative(
+                      delayMinutes
+                    )}`;
+                    statusSpan.className =
+                      "delay-status font-bold text-red-600";
+                  } else {
+                    statusSpan.textContent = `Early by ${formatRelative(
+                      -delayMinutes
+                    )}`;
+                    statusSpan.className =
+                      "delay-status font-bold text-yellow-600";
+                  }
+                  delayLabel.classList.remove("hidden");
+                }
+
+                if (stopIndex === nextIndex) {
+                  stopEl.classList.add("is-next");
+                  nextStopElForProgress = stopEl;
+                  if (dom.summaryNextStop)
+                    dom.summaryNextStop.textContent =
+                      stopEl.querySelector(".stop-name").textContent;
+                  if (dom.summaryEta) dom.summaryEta.textContent = formattedEta;
+                  if (dom.summaryToNext)
+                    dom.summaryToNext.textContent = `${km(
+                      distToStopAlong
+                    ).toFixed(2)} km`;
+
+                  if (
+                    tripState.currentNextStopIndex !== stopIndex &&
+                    stopEl.offsetParent
+                  ) {
+                    stopEl.scrollIntoView({
+                      behavior: "smooth",
+                      block: "center",
+                    });
+                    tripState.currentNextStopIndex = stopIndex;
+                  }
+                }
+              }
+            });
+
+            // Connector progress from last arrived to next upcoming
+            if (nextStopElForProgress && tripState.lastArrivedStopIndex > -1) {
+              const prevStopEl = container.querySelector(
+                `[data-stop-index="${tripState.lastArrivedStopIndex}"]`
+              );
+              if (prevStopEl) {
+                const prevSnap =
+                  tripState.stopSnaps[tripState.lastArrivedStopIndex];
+                const nextSnap =
+                  tripState.stopSnaps[
+                    parseInt(nextStopElForProgress.dataset.stopIndex)
+                  ];
+                const totalSeg = Math.max(
+                  1,
+                  nextSnap.cumDist - prevSnap.cumDist
+                );
+                const coveredSeg = Math.max(
+                  0,
+                  Math.min(totalSeg, curCum - prevSnap.cumDist)
+                );
+                const p = (coveredSeg / totalSeg) * 100;
+                const progressConnector = prevStopEl.querySelector(
+                  ".stop-connector-progress"
+                );
+                if (progressConnector)
+                  progressConnector.style.height = `${p.toFixed(1)}%`;
+              }
+            }
+          });
+        }
+
+        // ---------- LOCATION UPDATES ----------
+        function processLocationUpdate(coords) {
+          if (
+            !coords ||
+            typeof coords.lat !== "number" ||
+            typeof coords.lng !== "number"
+          )
+            return;
+
+          const endLatLng = L.latLng(coords.lat, coords.lng);
+          let currentSpeed = 0,
+            bearing = tripState.lastLocation?.bearing || 0;
+          let dt = 0;
+
+          if (tripState.lastLocation) {
+            const dist = endLatLng.distanceTo(tripState.lastLocation.latlng);
+            dt = (Date.now() - tripState.lastLocation.timestamp) / 1000;
+            if (dt > MIN_VALID_TIME_SEC && dist > MIN_VALID_MOVE_METERS) {
+              currentSpeed = mpsToKmh(dist / dt);
+              bearing = calculateBearing(
+                tripState.lastLocation.latlng,
+                endLatLng
+              );
+              if (currentSpeed < MAX_REALISTIC_SPEED_KMPH) {
+                tripState.recentSpeeds.push(currentSpeed);
+                if (tripState.recentSpeeds.length > ROLLING_AVERAGE_SAMPLES)
+                  tripState.recentSpeeds.shift();
+              }
+            } else {
+              currentSpeed = 0;
+            }
+          }
+
+          // Animate marker
+          const animMs = Math.min(2000, Math.max(300, dt * 1000 || 800));
+          animateBus(endLatLng, animMs);
+          rotateBusMarker(bearing);
+
+          tripState.lastLocation = {
+            latlng: endLatLng,
+            timestamp: Date.now(),
+            bearing,
+          };
+          tripState.lastUpdateTs = Date.now();
+          setSummarySpeed(currentSpeed);
+          updateStatusUI("live");
+
+          if (tripState.follow && !animation.active) {
+            map.panTo(endLatLng, { animate: true });
+          }
+
+          // Arrivals
+          // Arrivals
+          // Arrivals/departures with geofence/dwell logic
+          updateStopArrivalDeparture(endLatLng, currentSpeed);
+
+          // Progress + ETA with snap to route (fast search around last index)
+          let busSnap = null;
+          if (tripState.fullRouteCoords?.length) {
+            const snap =
+              tripState.lastSnapIndex >= 0
+                ? closestPointOnPolylineNear(
+                    endLatLng,
+                    tripState.fullRouteCoords,
+                    tripState.lastSnapIndex,
+                    80
+                  )
+                : closestPointOnPolyline(endLatLng, tripState.fullRouteCoords);
+            tripState.lastSnapIndex = snap.index ?? tripState.lastSnapIndex;
+            busSnap = { point: snap.point || endLatLng, index: snap.index };
+          } else {
+            busSnap = { point: endLatLng, index: -1 };
+          }
+          updateProgressLine(busSnap);
+          updateStopListUI(busSnap);
+
+          // refresh stale timer
+          scheduleStaleCheck();
+        }
+
+        // ---------- EVENTS ----------
+        // Buttons
+        dom.recenterBtn?.addEventListener("click", () => {
+          if (busMarker)
+            map.flyTo(busMarker.getLatLng(), Math.max(map.getZoom(), 16), {
+              animate: true,
+            });
+          tripState.follow = true;
+          updateFollowUI();
         });
-      });
 
-      // Mobile stops sheet toggle
-      const toggleSheet = () => dom.mobileStopSheet?.classList.toggle('translate-y-full');
-      // Add the button only on mobile (if you had one previously)
-      if (!document.getElementById('toggle-stops-btn')) {
-        // optional: add a floating button on mobile
-        const btn = document.createElement('button');
-        btn.id = 'toggle-stops-btn';
-        btn.title = 'Show Stops';
-        btn.className = 'md:hidden glass-card fixed bottom-24 right-4 z-20 w-12 h-12 rounded-full flex items-center justify-center text-blue-600 hover:bg-white/80 transition';
-        btn.innerHTML = '<i class="fas fa-route text-xl"></i>';
-        document.body.appendChild(btn);
-        btn.addEventListener('click', toggleSheet);
-      } else {
-        document.getElementById('toggle-stops-btn')?.addEventListener('click', toggleSheet);
-      }
-      dom.closeStopsBtn?.addEventListener('click', toggleSheet);
+        dom.followBtn?.addEventListener("click", () => {
+          tripState.follow = !tripState.follow;
+          updateFollowUI();
+          if (tripState.follow && busMarker)
+            map.flyTo(busMarker.getLatLng(), Math.max(map.getZoom(), 16));
+        });
 
-      // ---------- SOCKET ----------
-      const socket = io();
-      socket.on('connect', () => socket.emit('joinBusRoom', tripState.busId));
-      socket.on('disconnect', () => { updateStatusUI('offline'); clearTimeout(timers.staleTimeoutId); });
-      socket.on('locationUpdate', (newCoords) => processLocationUpdate(newCoords));
-      socket.on('trackingStopped', () => updateStatusUI('offline'));
+        map.on("dragstart", () => {
+          tripState.follow = false;
+          updateFollowUI();
+        });
 
-      // ---------- PERIODIC UI REFRESH ----------
-      timers.uiIntervalId = setInterval(() => {
-        if (!tripState.lastLocation) return;
-        if (Date.now() - tripState.lastUpdateTs >= LOCATION_STALE_MS) {
-          setSummarySpeed(0);
-          updateStatusUI(tripState.liveState === 'offline' ? 'offline' : 'stale');
+        dom.mylocBtn?.addEventListener("click", () => {
+          map.locate({ setView: true, maxZoom: 16, enableHighAccuracy: true });
+        });
+
+        dom.darkModeBtn?.addEventListener("click", toggleTheme);
+        dom.fullscreenBtn?.addEventListener("click", () => {
+          if (map.toggleFullscreen) map.toggleFullscreen();
+        });
+
+        // Layers menu open/close
+        function toggleLayersMenu(forceState) {
+          if (!dom.layersMenu) return;
+          const show = forceState ?? !dom.layersMenu.classList.contains("show");
+          dom.layersMenu.classList.toggle("show", show);
         }
-        // Update using latest snap
-        const endLatLng = tripState.lastLocation.latlng;
-        let busSnap = null;
-        if (tripState.fullRouteCoords?.length) {
-          const snap = closestPointOnPolyline(endLatLng, tripState.fullRouteCoords);
-          busSnap = { point: snap.point || endLatLng, index: snap.index };
+        dom.layersBtn?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          toggleLayersMenu();
+        });
+        document.addEventListener("click", (e) => {
+          if (!dom.layersMenu?.contains(e.target) && e.target !== dom.layersBtn)
+            toggleLayersMenu(false);
+        });
+        dom.layersMenu?.querySelectorAll(".menu-item").forEach((item) => {
+          item.addEventListener("click", () => {
+            const mode = item.getAttribute("data-style");
+            setBaseLayer(mode);
+            toggleLayersMenu(false);
+          });
+        });
+
+        // Mobile stops sheet toggle
+        const toggleSheet = () =>
+          dom.mobileStopSheet?.classList.toggle("translate-y-full");
+        // Add the button only on mobile (if you had one previously)
+        if (!document.getElementById("toggle-stops-btn")) {
+          // optional: add a floating button on mobile
+          const btn = document.createElement("button");
+          btn.id = "toggle-stops-btn";
+          btn.title = "Show Stops";
+          btn.className =
+            "md:hidden glass-card fixed bottom-24 right-4 z-20 w-12 h-12 rounded-full flex items-center justify-center text-blue-600 hover:bg-white/80 transition";
+          btn.innerHTML = '<i class="fas fa-route text-xl"></i>';
+          document.body.appendChild(btn);
+          btn.addEventListener("click", toggleSheet);
         } else {
-          busSnap = { point: endLatLng, index: -1 };
+          document
+            .getElementById("toggle-stops-btn")
+            ?.addEventListener("click", toggleSheet);
         }
-        updateStopListUI(busSnap);
-        updateProgressLine(busSnap);
-      }, UI_REFRESH_MS);
+        dom.closeStopsBtn?.addEventListener("click", toggleSheet);
 
-      // ---------- INIT ----------
-      map.whenReady(() => {
-        map.invalidateSize();
+        // ---------- SOCKET ----------
+        const socket = io();
+        socket.on("connect", () => socket.emit("joinBusRoom", tripState.busId));
+        socket.on("disconnect", () => {
+          updateStatusUI("offline");
+          clearTimeout(timers.staleTimeoutId);
+        });
+        socket.on("locationUpdate", (newCoords) =>
+          processLocationUpdate(newCoords)
+        );
+        socket.on("trackingStopped", () => updateStatusUI("offline"));
+
+        // ---------- PERIODIC UI REFRESH ----------
+        timers.uiIntervalId = setInterval(() => {
+          if (!tripState.lastLocation) return;
+          if (Date.now() - tripState.lastUpdateTs >= LOCATION_STALE_MS) {
+            setSummarySpeed(0);
+            updateStatusUI(
+              tripState.liveState === "offline" ? "offline" : "stale"
+            );
+          }
+          // Update using latest snap
+          const endLatLng = tripState.lastLocation.latlng;
+          let busSnap = null;
+          if (tripState.fullRouteCoords?.length) {
+            const snap = closestPointOnPolyline(
+              endLatLng,
+              tripState.fullRouteCoords
+            );
+            busSnap = { point: snap.point || endLatLng, index: snap.index };
+          } else {
+            busSnap = { point: endLatLng, index: -1 };
+          }
+          updateStopListUI(busSnap);
+          updateProgressLine(busSnap);
+        }, UI_REFRESH_MS);
+
+        // ---------- INIT ----------
+        map.whenReady(() => {
+          map.invalidateSize();
+        });
+
+        generateStopList();
+        initializeRoute();
+
+        // Initial status and position
+        if (busData.trackingStarted && busData.currentLocation?.lat) {
+          processLocationUpdate(busData.currentLocation);
+        } else {
+          updateStatusUI(busData.trackingStarted ? "stale" : "offline");
+          if (busData.stops?.length) {
+            const p = [busData.stops[0].lat, busData.stops[0].lng];
+            animateBus(p, 0);
+          }
+        }
       });
-
-      generateStopList();
-      initializeRoute();
-
-      // Initial status and position
-      if (busData.trackingStarted && busData.currentLocation?.lat) {
-        processLocationUpdate(busData.currentLocation);
-      } else {
-        updateStatusUI(busData.trackingStarted ? 'stale' : 'offline');
-        if (busData.stops?.length) {
-          const p = [busData.stops[0].lat, busData.stops[0].lng];
-          animateBus(p, 0);
-        }
-      }
-    });
   </script>
 </body>
 </html>
