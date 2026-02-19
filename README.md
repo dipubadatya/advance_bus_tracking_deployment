@@ -8,6 +8,10 @@ A real-time college bus tracking web application that allows students to monitor
 
 Built using Node.js, Express, MongoDB, Passport.js, Socket.io, EJS, TailwindCSS, and Leaflet.js.
 
+## 🌐 Live Demo
+
+🔗 Live Application:  https://advance-bus-tracking-deployment.onrender.com/
+
 ---
 
 ## 📌 Overview
